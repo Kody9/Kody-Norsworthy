@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projects - Your Name</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="floating">My Projects</h1>
+        <div class="projects-grid">
+            
+            <div class="project-item">
+                <div class="image-container">
+                    <button class="slide-arrow prev-arrow" onclick="changeSlide(-1, 0)">&#10094;</button>
+                    <img src="images/fancychicksandeggs.png" alt="Project 1" class="project-image">
+                    <button class="slide-arrow next-arrow" onclick="changeSlide(1, 0)">&#10095;</button>
+                </div>
+                <h2>Fancy Chicks and Eggs</h2>
+                <p>Dive into the essence of modern web development with "Fancy Chicks and Eggs," a project where traditional agriculture meets the digital age. This static website is meticulously crafted using the latest HTML5 and CSS3 standards, showcasing an elegant, responsive design that provides a seamless user experience across all devices.</p>
+                <a href="https://kody9.github.io/Fancy-Chicks-and-Eggs/" class="button">View Project</a>
+            </div>
+            
+            <div class="project-item">
+                <div class="image-container">
+                    <button class="slide-arrow prev-arrow" onclick="changeSlide(-1, 1)">&#10094;</button>
+                    <img src="images/CRM1.png" alt="Project 2" class="project-image">
+                    <button class="slide-arrow next-arrow" onclick="changeSlide(1, 1)">&#10095;</button>
+                </div>
+                <h2>MERN Stack Customer Relationship Management (CRM) System</h2>
+                <p>This CRM is built upon the robust MERN stack, leveraging MongoDB, Express.js, React.js, and Node.js, offering a full-stack JavaScript solution that is scalable and easy to maintain</p>
+                <a href="https://github.com/Kody9/MERN-CRM" class="button">View Project</a>
+            </div>
+
+            <div class="project-item">
+                <div class="image-container">
+                    <button class="slide-arrow prev-arrow" onclick="changeSlide(-1, 2)">&#10094;</button>
+                    <img src="images/MERN-Library1.png" alt="Project 3" class="project-image">
+                    <button class="slide-arrow next-arrow" onclick="changeSlide(1, 2)">&#10095;</button>
+                </div>
+                <h2>MERN Stack Book Library</h2>
+                <p>The MERN Stack Library Management System is a state-of-the-art web application that revolutionizes the management and circulation of books. Built with MongoDB, Express.js, React.js, and Node.js, it delivers a fast, responsive user interface for library operations. Key features include real-time availability checks, efficient book check-out and check-in processes, and a comprehensive catalog of books complete with author details and ISBN information. The system is designed with a focus on user experience and performance optimization, ensuring that both librarians and patrons can navigate and use the system with ease.</p>
+                <a href="https://github.com/Kody9/MERN-Library/tree/master" class="button">View Project</a>
+            </div>
+            
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
