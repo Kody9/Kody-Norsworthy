@@ -1,10 +1,11 @@
 const projectImages = [
     ["images/fancychicksandeggs.png", "images/fancychicksandeggs2.png"],
     ["images/CRM1.png", "images/CRM2.png"],
-    ["images/MERN-Library1.png", "images/MERN-Library2.png", "images/MERN-Library3.png"]
+    ["images/MERN-Library1.png", "images/MERN-Library2.png", "images/MERN-Library3.png"],
+    ["images/Study1.png", "images/Study2.png", "images/Study3.png"]
 ];
 
-let currentImageIndex = [0, 0, 0]; // Initializes image index for each project
+let currentImageIndex = [0, 0, 0, 0]; // Initializes image index for each project
 
 function changeSlide(direction, projectIndex) {
     currentImageIndex[projectIndex] += direction;

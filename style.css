@@ -121,9 +121,12 @@ nav ul li a:active {
 }
 
 .project-image {
-    width: 100%;
-    height: auto;
-    border-radius: 5px;
+    width: 100%; /* Ensures the width adjusts to the container */
+    height: auto; /* Maintains aspect ratio */
+    max-height: 300px; /* Limits the maximum height to prevent stretching */
+    object-fit: contain; /* Ensures the entire image is visible within the container */
+    border-radius: 5px; /* Rounds corners slightly for aesthetic */
+    background-color: #f0f0f0; /* Optional: Add a background color to fill empty spaces */
 }
 
 footer {
