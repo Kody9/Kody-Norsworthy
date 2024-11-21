@@ -101,7 +101,7 @@ nav ul li a:active {
 
 .projects-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
     grid-auto-flow: row;
     gap: 30px;
     padding: 20px;
@@ -111,7 +111,7 @@ nav ul li a:active {
     background: #ffffff;
     border-radius: 8px;
     box-shadow: 0px 5px 20px rgba(0,0,0,0.1);
-    padding: 15px;
+    padding: 10px;
     text-align: center;
     transition: transform 0.3s ease;
 }
@@ -121,9 +121,12 @@ nav ul li a:active {
 }
 
 .project-image {
-    width: 100%;
-    height: auto;
-    border-radius: 5px;
+    width: 100%; /* Ensures the width adjusts to the container */
+    height: auto; /* Maintains aspect ratio */
+    max-height: 300px; /* Limits the maximum height to prevent stretching */
+    object-fit: contain; /* Ensures the entire image is visible within the container */
+    border-radius: 5px; /* Rounds corners slightly for aesthetic */
+    background-color: #f0f0f0; /* Optional: Add a background color to fill empty spaces */
 }
 
 footer {
@@ -364,4 +367,32 @@ textarea {
     border-radius: 5px; 
     transition: background-color 0.3s, transform 0.3s; 
 }
+
+.image-container {
+    position: relative;
+    width: 100%;
+}
+
+.slide-arrow {
+    cursor: pointer;
+    position: absolute;
+    top: 50%;
+    z-index: 10;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    padding: 10px;
+    font-size: 24px;
+    transition: 0.6s ease;
+    user-select: none;
+}
+
+.prev-arrow {
+    left: 10px;
+}
+
+.next-arrow {
+    right: 10px;
+}
+
 
