@@ -1,0 +1,26 @@
+name: PlateLog
+options:
+  bundleIdPrefix: com.kodynorsworthy
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  PlateLog:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      properties:
+        CFBundleDisplayName: Plate Log
+        NSCameraUsageDescription: "Plate Log uses the camera to capture license plate photos for your personal log."
+        NSLocationWhenInUseUsageDescription: "Plate Log records the location where each plate was captured."
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kodynorsworthy.platelog
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        ENABLE_PREVIEWS: true
