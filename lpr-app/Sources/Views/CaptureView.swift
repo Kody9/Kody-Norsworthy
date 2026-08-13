@@ -1,77 +1,138 @@
 import AVFoundation
 import Combine
+import CoreLocation
+import SwiftData
 import SwiftUI
 import UIKit
 
+enum CapturePhase {
+    case camera
+    case read
+    case saved
+    case manualEntry
+    case noPlateFound
+    case cameraDenied
+}
+
 struct CaptureView: View {
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var camera = CameraController()
     @StateObject private var locationService = LocationService()
 
-    @State private var showConfirmSheet = false
-    @State private var candidatePlates: [PlateOCRService.Candidate] = []
-    @State private var isProcessing = false
-    @State private var showPermissionAlert = false
+    @State private var phase: CapturePhase = .camera
+    @State private var isReading = false
+    @State private var candidates: [PlateOCRService.Candidate] = []
+    @State private var selectedIndex = 0
+    @State private var selectedTag = "BOLO"
+    @State private var isManualEntry = false
+    @State private var capturedImage: UIImage?
+    @State private var capturedLocation: CLLocation?
+    @State private var savedPlateText = ""
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                if camera.isConfigured {
-                    CameraPreview(session: camera.session)
-                        .ignoresSafeArea()
-                } else {
-                    Color.black.ignoresSafeArea()
-                    ProgressView().tint(.white)
-                }
-
-                VStack {
-                    Spacer()
-                    if isProcessing {
-                        ProgressView("Reading plate…")
-                            .padding()
-                            .background(.thinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    Button(action: capture) {
-                        Circle()
-                            .fill(.white)
-                            .frame(width: 74, height: 74)
-                            .overlay(Circle().stroke(.black.opacity(0.3), lineWidth: 2))
-                    }
-                    .padding(.bottom, 32)
-                    .disabled(isProcessing || !camera.isConfigured)
-                }
-            }
-            .navigationTitle("Quick Capture")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear(perform: requestPermissions)
-            .onDisappear { camera.stop() }
-            .onReceive(camera.$capturedImage.compactMap { $0 }) { image in
-                PlateOCRService.recognizePlates(in: image) { candidates in
-                    DispatchQueue.main.async {
-                        candidatePlates = candidates
-                        isProcessing = false
-                        showConfirmSheet = true
-                    }
-                }
-            }
-            .alert("Camera Access Needed", isPresented: $showPermissionAlert) {
-                Button("Open Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Enable camera access in Settings to capture plates.")
-            }
-            .sheet(isPresented: $showConfirmSheet) {
-                ConfirmEntryView(
-                    image: camera.capturedImage,
-                    candidates: candidatePlates,
-                    location: locationService.lastLocation
+        Group {
+            switch phase {
+            case .camera:
+                cameraPhase
+            case .read:
+                ReadEntryView(
+                    image: capturedImage,
+                    candidates: candidates,
+                    selectedIndex: $selectedIndex,
+                    selectedTag: $selectedTag,
+                    location: capturedLocation,
+                    isManualEntry: isManualEntry,
+                    onSave: saveEntry,
+                    onRetake: { resetToCamera() }
+                )
+            case .saved:
+                SavedConfirmationView(plateText: savedPlateText)
+            case .manualEntry:
+                ManualEntryView(
+                    onLog: { text in beginRead(withManualText: text) },
+                    onCancel: { phase = .camera }
+                )
+            case .noPlateFound:
+                NoPlateFoundView(
+                    image: capturedImage,
+                    onReshoot: { resetToCamera() },
+                    onTypeIt: { phase = .manualEntry }
+                )
+            case .cameraDenied:
+                CameraDeniedView(
+                    locationStatus: locationService.authorizationStatus,
+                    onOpenSettings: openSystemSettings,
+                    onTypeInstead: { phase = .manualEntry }
                 )
             }
         }
+        .onAppear(perform: requestPermissions)
+        .onDisappear { camera.stop() }
+        .onReceive(camera.$capturedImage.compactMap { $0 }) { image in
+            handleCaptured(image: image)
+        }
+    }
+
+    private var cameraPhase: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                if camera.isConfigured {
+                    CameraPreview(session: camera.session)
+                } else {
+                    Color.black
+                }
+
+                FramingBrackets()
+                    .padding(.horizontal, 48)
+                    .frame(height: 78)
+                    .padding(.top, 180)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                VStack {
+                    Spacer()
+                    HStack {
+                        Text("LIVE CAMERA · REAR WIDE\nHOLD PLATE INSIDE THE MARKS")
+                            .plType(.technicalCaption)
+                            .foregroundStyle(PLColor.inkTertiary)
+                            .lineSpacing(3)
+                        Spacer()
+                    }
+                    .padding(PLSpacing.gutter)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .ignoresSafeArea(edges: .top)
+
+            if isReading {
+                HStack {
+                    Text("READING PLATE…")
+                        .plType(PLTypeStyle(.heavy, 13, trackingEm: 0.1))
+                        .foregroundStyle(PLColor.accentOnDark)
+                    Spacer()
+                }
+                .padding(.horizontal, PLSpacing.gutter)
+                .padding(.vertical, 14)
+                .background(PLColor.ground)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(PLColor.accentOnDark).frame(height: PLSpacing.ruleWidth)
+                }
+            }
+
+            HStack(spacing: 2) {
+                PLPrimaryButton(
+                    "READ PLATE",
+                    subLabel: "ON DEVICE · NOTHING UPLOADED",
+                    isDisabled: isReading || !camera.isConfigured,
+                    action: capture
+                )
+                PLSecondaryButton(["TYPE", "IT IN"]) {
+                    phase = .manualEntry
+                }
+            }
+            .padding(PLSpacing.gutter)
+        }
+        .background(PLColor.ground)
     }
 
     private func requestPermissions() {
@@ -85,18 +146,111 @@ struct CaptureView: View {
                     if granted {
                         camera.configure()
                     } else {
-                        showPermissionAlert = true
+                        phase = .cameraDenied
                     }
                 }
             }
         default:
-            showPermissionAlert = true
+            phase = .cameraDenied
+        }
+    }
+
+    private func openSystemSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 
     private func capture() {
-        isProcessing = true
+        isReading = true
         locationService.requestOneShotLocation()
         camera.capturePhoto()
+    }
+
+    private func handleCaptured(image: UIImage) {
+        PlateOCRService.recognizePlates(in: image) { foundCandidates in
+            DispatchQueue.main.async {
+                isReading = false
+                capturedImage = image
+                capturedLocation = locationService.lastLocation
+                if foundCandidates.isEmpty {
+                    phase = .noPlateFound
+                } else {
+                    candidates = foundCandidates
+                    selectedIndex = 0
+                    selectedTag = "BOLO"
+                    isManualEntry = false
+                    phase = .read
+                }
+            }
+        }
+    }
+
+    private func beginRead(withManualText text: String) {
+        candidates = [PlateOCRService.Candidate(text: text, confidence: 1.0)]
+        selectedIndex = 0
+        selectedTag = "BOLO"
+        isManualEntry = true
+        capturedImage = nil
+        capturedLocation = locationService.lastLocation
+        phase = .read
+    }
+
+    private func saveEntry(plateText: String, tag: String) {
+        let entry = PlateEntry(
+            plateNumber: plateText.uppercased(),
+            state: "Unknown",
+            latitude: capturedLocation?.coordinate.latitude,
+            longitude: capturedLocation?.coordinate.longitude,
+            tag: tag,
+            photoData: capturedImage?.jpegData(compressionQuality: 0.7)
+        )
+        modelContext.insert(entry)
+
+        savedPlateText = plateText.uppercased()
+        phase = .saved
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            resetToCamera()
+        }
+    }
+
+    private func resetToCamera() {
+        candidates = []
+        selectedIndex = 0
+        isManualEntry = false
+        capturedImage = nil
+        capturedLocation = nil
+        phase = .camera
+    }
+}
+
+private struct CornerMark: View {
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(PLColor.accentOnDark).frame(width: 28, height: 3)
+            Rectangle().fill(PLColor.accentOnDark).frame(width: 3, height: 24)
+        }
+    }
+}
+
+/// Four L-shaped alignment guides. Purely visual — capture is never gated
+/// on the plate actually being inside them.
+struct FramingBrackets: View {
+    var body: some View {
+        ZStack {
+            CornerMark()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            CornerMark()
+                .rotationEffect(.degrees(90))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            CornerMark()
+                .rotationEffect(.degrees(-90))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            CornerMark()
+                .rotationEffect(.degrees(180))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        }
+        .allowsHitTesting(false)
     }
 }

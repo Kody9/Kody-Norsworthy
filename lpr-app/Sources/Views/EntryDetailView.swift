@@ -5,106 +5,228 @@ import UIKit
 
 struct EntryDetailView: View {
     @Bindable var entry: PlateEntry
+    let onBack: () -> Void
 
     @State private var vinDecodeResult: NHTSAVinDecoder.Result?
     @State private var isDecoding = false
     @State private var decodeError: String?
 
     var body: some View {
-        Form {
-            if let data = entry.photoData, let uiImage = UIImage(data: data) {
-                Section {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            }
-
-            Section("Plate") {
-                LabeledContent("Plate Number", value: entry.plateNumber)
-                LabeledContent("State", value: entry.state)
-                LabeledContent("Captured", value: entry.capturedAt.formatted(date: .abbreviated, time: .shortened))
-            }
-
-            Section("Details") {
-                TextField(
-                    "VIN",
-                    text: Binding(
-                        get: { entry.vin ?? "" },
-                        set: { entry.vin = $0.isEmpty ? nil : $0.uppercased() }
-                    )
-                )
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled()
-                TextField("Notes", text: $entry.notes, axis: .vertical)
-            }
-
-            if let latitude = entry.latitude, let longitude = entry.longitude {
-                Section("Location Captured") {
-                    Map(initialPosition: .region(
-                        MKCoordinateRegion(
-                            center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-                            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                        )
-                    )) {
-                        Marker("Capture Point", coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    backRow
+                    header
+                    photo
+                    if let latitude = entry.latitude, let longitude = entry.longitude {
+                        map(latitude: latitude, longitude: longitude)
                     }
-                    .frame(height: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    lookupsSection
+                    fieldsSection
                 }
             }
+            notAvailablePanel
+        }
+        .background(PLColor.ground)
+    }
 
-            Section {
-                Text("These open free, publicly available government or consumer tools in your browser. This app never accesses any government or private owner database directly.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+    private var backRow: some View {
+        Button(action: onBack) {
+            Text("‹ HISTORY")
+                .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                .foregroundStyle(PLColor.inkTertiary)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, PLSpacing.gutter)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+    }
 
-                Button(action: decodeVin) {
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(entry.plateNumber).plType(.plateDetail).foregroundStyle(PLColor.ink)
+            Text("\(entry.state.uppercased()) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.tag.uppercased())")
+                .plType(PLTypeStyle(.semibold, 12, trackingEm: 0.08))
+                .foregroundStyle(PLColor.inkTertiary)
+        }
+        .padding(.horizontal, PLSpacing.gutter)
+        .padding(.bottom, PLSpacing.gutter)
+    }
+
+    private var photo: some View {
+        Group {
+            if let data = entry.photoData, let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .grayscale(1.0)
+            } else {
+                PLColor.surface
+            }
+        }
+        .frame(height: 150)
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+
+    private func map(latitude: Double, longitude: Double) -> some View {
+        ZStack {
+            Map(initialPosition: .region(
+                MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )
+            )) {}
+            .allowsHitTesting(false)
+            Rectangle()
+                .fill(PLColor.accentOnDark)
+                .frame(width: 10, height: 10)
+        }
+        .frame(height: 110)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .overlay(alignment: .top) {
+            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+        }
+    }
+
+    private var lookupsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("PUBLIC LOOKUPS — OPENS IN BROWSER")
+                .plType(.sectionLabel)
+                .foregroundStyle(PLColor.inkTertiary)
+                .padding(.horizontal, PLSpacing.gutter)
+                .padding(.top, 14)
+                .padding(.bottom, 8)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
+                }
+
+            decodeVinRow
+
+            linkRow(title: "Stolen / salvage — NICB") {
+                UIApplication.shared.open(ExternalLookupLinks.nicbVinCheck())
+            }
+            linkRow(title: "Service history — CARFAX", showRule: false) {
+                UIApplication.shared.open(ExternalLookupLinks.carfaxFreeCheck())
+            }
+        }
+    }
+
+    private var decodeVinRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: decodeVin) {
+                HStack {
+                    Text("Decode VIN — NHTSA").plType(.linkRow).foregroundStyle(PLColor.ink)
+                    Spacer()
                     if isDecoding {
                         ProgressView()
                     } else {
-                        Label("Decode VIN (NHTSA, free & public)", systemImage: "number")
+                        Text("→").plType(.linkRow).foregroundStyle(PLColor.accentOnDark)
                     }
                 }
-                .disabled((entry.vin ?? "").isEmpty || isDecoding)
-
-                if let result = vinDecodeResult {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let make = result.make { LabeledContent("Make", value: make) }
-                        if let model = result.model { LabeledContent("Model", value: model) }
-                        if let year = result.year { LabeledContent("Year", value: year) }
-                        if let bodyClass = result.bodyClass { LabeledContent("Body Type", value: bodyClass) }
-                    }
-                }
-                if let decodeError {
-                    Text(decodeError).font(.footnote).foregroundStyle(.red)
-                }
-
-                Link(destination: ExternalLookupLinks.nicbVinCheck()) {
-                    Label("NICB VINCheck (stolen/salvage, free)", systemImage: "checkmark.shield")
-                }
-
-                Link(destination: ExternalLookupLinks.carfaxFreeCheck()) {
-                    Label("CARFAX Free Report (service history)", systemImage: "wrench.and.screwdriver")
-                }
-
-                Link(destination: ExternalLookupLinks.webSearch(plate: entry.plateNumber, state: entry.state)) {
-                    Label("Web Search Plate Number", systemImage: "magnifyingglass")
-                }
-            } header: {
-                Text("Public Lookups")
+                .padding(.horizontal, PLSpacing.gutter)
+                .padding(.vertical, 14)
             }
+            .buttonStyle(.plain)
+            .disabled((entry.vin ?? "").isEmpty || isDecoding)
+            .opacity((entry.vin ?? "").isEmpty ? 0.5 : 1)
 
-            Section("Agency Database") {
-                Text(OwnerLookupProvider.unconfiguredMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            if let result = vinDecodeResult {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let make = result.make { detailLine("Make", make) }
+                    if let model = result.model { detailLine("Model", model) }
+                    if let year = result.year { detailLine("Year", year) }
+                    if let bodyClass = result.bodyClass { detailLine("Body Type", bodyClass) }
+                }
+                .padding(.horizontal, PLSpacing.gutter)
+                .padding(.bottom, 12)
+            }
+            if let decodeError {
+                Text(decodeError)
+                    .plType(.body)
+                    .foregroundStyle(PLColor.accentOnDark)
+                    .padding(.horizontal, PLSpacing.gutter)
+                    .padding(.bottom, 12)
             }
         }
-        .navigationTitle(entry.plateNumber)
-        .navigationBarTitleDisplayMode(.inline)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+        }
+    }
+
+    private func detailLine(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label.uppercased()).plType(PLTypeStyle(.semibold, 11, trackingEm: 0.06)).foregroundStyle(PLColor.inkTertiary)
+            Spacer()
+            Text(value).plType(PLTypeStyle(.semibold, 13)).foregroundStyle(PLColor.inkSecondary)
+        }
+    }
+
+    private func linkRow(title: String, showRule: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title).plType(.linkRow).foregroundStyle(PLColor.ink)
+                Spacer()
+                Text("→").plType(.linkRow).foregroundStyle(PLColor.accentOnDark)
+            }
+            .padding(.horizontal, PLSpacing.gutter)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottom) {
+            if showRule {
+                Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+            }
+        }
+    }
+
+    private var fieldsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            fieldRow(label: "STATE", text: Binding(
+                get: { entry.state },
+                set: { entry.state = $0.isEmpty ? "Unknown" : $0 }
+            ))
+            fieldRow(label: "VIN", text: Binding(
+                get: { entry.vin ?? "" },
+                set: { entry.vin = $0.isEmpty ? nil : $0.uppercased() }
+            ), autocapitalize: true)
+            fieldRow(label: "NOTES", text: $entry.notes)
+        }
+        .padding(.top, PLSpacing.sm)
+    }
+
+    private func fieldRow(label: String, text: Binding<String>, autocapitalize: Bool = false) -> some View {
+        HStack {
+            Text(label).plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary).frame(width: 64, alignment: .leading)
+            TextField("", text: text)
+                .plType(PLTypeStyle(.semibold, 14))
+                .foregroundStyle(PLColor.ink)
+                .textInputAutocapitalization(autocapitalize ? .characters : .sentences)
+                .autocorrectionDisabled(autocapitalize)
+        }
+        .padding(.horizontal, PLSpacing.gutter)
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+        }
+    }
+
+    private var notAvailablePanel: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("NOT AVAILABLE HERE")
+                .plType(.sectionLabel)
+                .foregroundStyle(PLColor.accentOnDark)
+            Text("Owner identity, NCIC and DMV records are not reachable from this app. Use your department's audited channel.")
+                .plType(.body)
+                .foregroundStyle(PLColor.inkSecondary)
+        }
+        .padding(PLSpacing.gutter)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PLColor.surface)
+        .overlay(alignment: .top) {
+            Rectangle().fill(PLColor.accentOnDark).frame(height: PLSpacing.ruleWidth)
+        }
     }
 
     private func decodeVin() {
