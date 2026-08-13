@@ -6,17 +6,21 @@ enum CSVExporter {
         let formatter = ISO8601DateFormatter()
 
         for entry in entries {
-            let fields = [
+            let latitudeText: String = entry.latitude.map { String($0) } ?? ""
+            let longitudeText: String = entry.longitude.map { String($0) } ?? ""
+            let capturedAtText: String = formatter.string(from: entry.capturedAt)
+            let rawFields: [String] = [
                 entry.plateNumber,
                 entry.state,
                 entry.vin ?? "",
-                formatter.string(from: entry.capturedAt),
-                entry.latitude.map(String.init) ?? "",
-                entry.longitude.map(String.init) ?? "",
+                capturedAtText,
+                latitudeText,
+                longitudeText,
                 entry.tag,
                 entry.notes
-            ].map(escape)
-            csv += fields.joined(separator: ",") + "\n"
+            ]
+            let escapedFields: [String] = rawFields.map(escape)
+            csv += escapedFields.joined(separator: ",") + "\n"
         }
 
         let url = FileManager.default.temporaryDirectory
