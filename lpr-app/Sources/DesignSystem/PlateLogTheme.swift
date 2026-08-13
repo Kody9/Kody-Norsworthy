@@ -141,7 +141,8 @@ struct PLSecondaryButton: View {
                 }
             }
             .padding(.horizontal, 14)
-            .frame(width: width, minHeight: 88, alignment: .leading)
+            .frame(width: width)
+            .frame(minHeight: 88, alignment: .leading)
             .foregroundStyle(PLColor.ink)
             .overlay(Rectangle().stroke(PLColor.ink, lineWidth: PLSpacing.ruleWidth))
         }
