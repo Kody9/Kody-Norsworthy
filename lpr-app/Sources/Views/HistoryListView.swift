@@ -131,7 +131,8 @@ private struct EntryRow: View {
 
     private var meta: String {
         let time = entry.capturedAt.formatted(date: .omitted, time: .shortened)
-        let base = "\(entry.state.uppercased()) · \(time)"
+        let state = entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
+        let base = "\(state) · \(time)"
         return repeatCount > 1 ? "\(base) · \(repeatCount)× THIS WEEK" : base
     }
 

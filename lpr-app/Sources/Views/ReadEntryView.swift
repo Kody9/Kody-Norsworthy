@@ -44,10 +44,12 @@ struct ReadEntryView: View {
     private var capturedFrame: some View {
         ZStack(alignment: .bottomLeading) {
             if let image {
+                Color.black
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
                     .grayscale(1.0)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Rectangle().fill(PLColor.surface)
             }

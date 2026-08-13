@@ -13,9 +13,10 @@ struct NoPlateFoundView: View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
                 if let image {
+                    Color.black
                     Image(uiImage: image)
                         .resizable()
-                        .scaledToFill()
+                        .scaledToFit()
                         .grayscale(1.0)
                 } else {
                     PLColor.surface

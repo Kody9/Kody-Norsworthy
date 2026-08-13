@@ -11,6 +11,10 @@ struct EntryDetailView: View {
     @State private var isDecoding = false
     @State private var decodeError: String?
 
+    private var displayState: String {
+        entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -45,7 +49,7 @@ struct EntryDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(entry.plateNumber).plType(.plateDetail).foregroundStyle(PLColor.ink)
-            Text("\(entry.state.uppercased()) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.tag.uppercased())")
+            Text("\(displayState) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.tag.uppercased())")
                 .plType(PLTypeStyle(.semibold, 12, trackingEm: 0.08))
                 .foregroundStyle(PLColor.inkTertiary)
         }
@@ -58,33 +62,34 @@ struct EntryDetailView: View {
             if let data = entry.photoData, let uiImage = UIImage(data: data) {
                 Image(uiImage: uiImage)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
                     .grayscale(1.0)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.black)
             } else {
-                PLColor.surface
+                PLColor.surface.frame(height: 150)
             }
         }
-        .frame(height: 150)
-        .frame(maxWidth: .infinity)
+        .frame(maxHeight: 220)
         .clipped()
     }
 
     private func map(latitude: Double, longitude: Double) -> some View {
-        ZStack {
-            Map(initialPosition: .region(
-                MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )
-            )) {}
-            .allowsHitTesting(false)
-            Rectangle()
-                .fill(PLColor.accentOnDark)
-                .frame(width: 10, height: 10)
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        return Map(initialPosition: .region(
+            MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            )
+        )) {
+            Annotation("", coordinate: coordinate) {
+                Rectangle()
+                    .fill(PLColor.accentOnDark)
+                    .frame(width: 10, height: 10)
+            }
         }
-        .frame(height: 110)
+        .frame(height: 180)
         .frame(maxWidth: .infinity)
-        .clipped()
         .overlay(alignment: .top) {
             Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
         }
@@ -183,10 +188,14 @@ struct EntryDetailView: View {
 
     private var fieldsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            fieldRow(label: "STATE", text: Binding(
-                get: { entry.state },
-                set: { entry.state = $0.isEmpty ? "Unknown" : $0 }
-            ))
+            fieldRow(
+                label: "STATE",
+                text: Binding(
+                    get: { entry.state == "Unknown" ? "" : entry.state },
+                    set: { entry.state = $0 }
+                ),
+                autocapitalize: true
+            )
             fieldRow(label: "VIN", text: Binding(
                 get: { entry.vin ?? "" },
                 set: { entry.vin = $0.isEmpty ? nil : $0.uppercased() }

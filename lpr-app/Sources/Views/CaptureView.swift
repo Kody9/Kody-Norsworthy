@@ -82,11 +82,13 @@ struct CaptureView: View {
                     Color.black
                 }
 
-                FramingBrackets()
-                    .padding(.horizontal, 48)
-                    .frame(height: 78)
-                    .padding(.top, 180)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                GeometryReader { geo in
+                    let width = geo.size.width - 96
+                    let height = width * 0.5
+                    FramingBrackets()
+                        .frame(width: width, height: height)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
 
                 VStack {
                     Spacer()
