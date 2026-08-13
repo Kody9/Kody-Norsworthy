@@ -33,7 +33,7 @@ enum CSVExporter {
         }
     }
 
-    private static func escape(_ field: String) -> String {
+    private nonisolated static func escape(_ field: String) -> String {
         guard field.contains(",") || field.contains("\"") || field.contains("\n") else { return field }
         return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
