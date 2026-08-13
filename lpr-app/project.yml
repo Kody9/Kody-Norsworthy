@@ -10,6 +10,7 @@ targets:
     sources:
       - Sources
     info:
+      path: Info.plist
       properties:
         CFBundleDisplayName: Plate Log
         NSCameraUsageDescription: "Plate Log uses the camera to capture license plate photos for your personal log."
