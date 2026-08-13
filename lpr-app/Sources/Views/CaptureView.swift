@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import SwiftUI
+import UIKit
 
 struct CaptureView: View {
     @StateObject private var camera = CameraController()

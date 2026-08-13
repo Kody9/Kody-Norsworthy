@@ -1,6 +1,7 @@
 import CoreLocation
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct ConfirmEntryView: View {
     @Environment(\.modelContext) private var modelContext

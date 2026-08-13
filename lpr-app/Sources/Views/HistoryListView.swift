@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct HistoryListView: View {
     @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var entries: [PlateEntry]

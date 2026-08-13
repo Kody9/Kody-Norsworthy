@@ -1,6 +1,7 @@
 import MapKit
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct EntryDetailView: View {
     @Bindable var entry: PlateEntry
