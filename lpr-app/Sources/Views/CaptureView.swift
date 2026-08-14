@@ -30,6 +30,12 @@ struct CaptureView: View {
     @State private var detectedState: String?
     @State private var savedPlateText = ""
 
+    @State private var zoomGestureBaseline: CGFloat = 1.0
+    @State private var isAutoScanEnabled = false
+    @State private var isAutoScanCapture = false
+    @State private var autoScanTask: Task<Void, Never>?
+    @State private var recentAutoScanPlates: [String] = []
+
     var body: some View {
         Group {
             switch phase {
@@ -69,7 +75,10 @@ struct CaptureView: View {
             }
         }
         .onAppear(perform: requestPermissions)
-        .onDisappear { camera.stop() }
+        .onDisappear {
+            camera.stop()
+            stopAutoScan()
+        }
         .onReceive(camera.$capturedImage.compactMap { $0 }) { image in
             handleCaptured(image: image)
         }
@@ -93,13 +102,18 @@ struct CaptureView: View {
                 }
 
                 VStack {
-                    Spacer()
                     HStack {
+                        Spacer()
+                        autoScanToggle
+                    }
+                    Spacer()
+                    HStack(alignment: .bottom) {
                         Text("LIVE CAMERA · REAR WIDE\nHOLD PLATE INSIDE THE MARKS")
                             .plType(.technicalCaption)
                             .foregroundStyle(PLColor.inkTertiary)
                             .lineSpacing(3)
                         Spacer()
+                        zoomControls
                     }
                     .padding(PLSpacing.gutter)
                 }
@@ -107,6 +121,15 @@ struct CaptureView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
             .ignoresSafeArea(edges: .top)
+            .gesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        camera.setZoom(zoomGestureBaseline * value)
+                    }
+                    .onEnded { _ in
+                        zoomGestureBaseline = camera.zoomFactor
+                    }
+            )
 
             if isReading {
                 HStack {
@@ -127,9 +150,10 @@ struct CaptureView: View {
                 PLPrimaryButton(
                     "READ PLATE",
                     subLabel: "ON DEVICE · NOTHING UPLOADED",
-                    isDisabled: isReading || !camera.isConfigured,
-                    action: capture
-                )
+                    isDisabled: isReading || !camera.isConfigured
+                ) {
+                    capture()
+                }
                 PLSecondaryButton(["TYPE", "IT IN"]) {
                     phase = .manualEntry
                 }
@@ -137,6 +161,46 @@ struct CaptureView: View {
             .padding(PLSpacing.gutter)
         }
         .background(PLColor.ground)
+    }
+
+    private var autoScanToggle: some View {
+        Button(action: toggleAutoScan) {
+            Text(isAutoScanEnabled ? "AUTO-SCAN · ON" : "AUTO-SCAN")
+                .plType(PLTypeStyle(.heavy, 11, trackingEm: 0.08))
+                .foregroundStyle(isAutoScanEnabled ? PLColor.ground : PLColor.ink)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(isAutoScanEnabled ? PLColor.accentOnDark : PLColor.surface.opacity(0.85))
+        }
+        .buttonStyle(.plain)
+        .padding(PLSpacing.gutter)
+    }
+
+    private var zoomControls: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Text(String(format: "%.1f×", camera.zoomFactor))
+                .plType(PLTypeStyle(.bold, 11, trackingEm: 0.04))
+                .foregroundStyle(PLColor.ink)
+            HStack(spacing: 2) {
+                ForEach(zoomPresets, id: \.self) { level in
+                    Button {
+                        camera.setZoom(level)
+                        zoomGestureBaseline = level
+                    } label: {
+                        Text("\(Int(level))×")
+                            .plType(PLTypeStyle(.bold, 12))
+                            .foregroundStyle(PLColor.ink)
+                            .frame(width: 34, height: 34)
+                            .background(PLColor.surface.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var zoomPresets: [CGFloat] {
+        [1, 2, 3].filter { $0 <= camera.maxZoomFactor }
     }
 
     private func requestPermissions() {
@@ -165,20 +229,72 @@ struct CaptureView: View {
         }
     }
 
-    private func capture() {
+    private func capture(auto: Bool = false) {
+        isAutoScanCapture = auto
         isReading = true
         locationService.requestOneShotLocation()
         camera.capturePhoto()
     }
 
+    private func toggleAutoScan() {
+        isAutoScanEnabled.toggle()
+        if isAutoScanEnabled {
+            startAutoScan()
+        } else {
+            stopAutoScan()
+        }
+    }
+
+    /// Periodically captures and OCRs in the background so you can drive or
+    /// walk past plates without tapping for each one. Only interrupts with
+    /// the Read screen for a confident, not-recently-seen plate — misses and
+    /// repeat reads of the same still-parked car are silently discarded so
+    /// scanning doesn't stall. Every surfaced read still requires LOG PLATE
+    /// to actually save; nothing is logged automatically.
+    private func startAutoScan() {
+        autoScanTask?.cancel()
+        autoScanTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled else { return }
+                guard isAutoScanEnabled, phase == .camera, !isReading, camera.isConfigured else { continue }
+                capture(auto: true)
+            }
+        }
+    }
+
+    private func stopAutoScan() {
+        autoScanTask?.cancel()
+        autoScanTask = nil
+    }
+
     private func handleCaptured(image: UIImage) {
+        let isAuto = isAutoScanCapture
+        isAutoScanCapture = false
         PlateOCRService.recognizePlates(in: image) { result in
             DispatchQueue.main.async {
                 isReading = false
+
+                if isAuto {
+                    guard
+                        let best = result.candidates.first,
+                        best.confidence >= 0.6,
+                        !recentAutoScanPlates.contains(best.text)
+                    else {
+                        return
+                    }
+                    recentAutoScanPlates.append(best.text)
+                    if recentAutoScanPlates.count > 8 {
+                        recentAutoScanPlates.removeFirst()
+                    }
+                }
+
                 capturedImage = image
                 capturedLocation = locationService.lastLocation
                 if result.candidates.isEmpty {
-                    phase = .noPlateFound
+                    if !isAuto {
+                        phase = .noPlateFound
+                    }
                 } else {
                     candidates = result.candidates
                     selectedIndex = 0

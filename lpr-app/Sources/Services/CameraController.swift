@@ -11,9 +11,13 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "com.platelog.camera.session")
+    private var videoDevice: AVCaptureDevice?
 
     @Published var capturedImage: UIImage?
     @Published var isConfigured = false
+    @Published var zoomFactor: CGFloat = 1.0
+    @Published var minZoomFactor: CGFloat = 1.0
+    @Published var maxZoomFactor: CGFloat = 1.0
 
     func configure() {
         sessionQueue.async { [weak self] in
@@ -44,8 +48,31 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
         session.commitConfiguration()
         session.startRunning()
 
+        // Cap digital zoom well below the device's reported maximum — past
+        // roughly 8x on an iPhone's main lens the image is too degraded to
+        // read a plate from anyway.
+        let cappedMax = min(device.maxAvailableVideoZoomFactor, 8.0)
+
         DispatchQueue.main.async { [weak self] in
+            self?.videoDevice = device
             self?.isConfigured = true
+            self?.minZoomFactor = device.minAvailableVideoZoomFactor
+            self?.maxZoomFactor = cappedMax
+        }
+    }
+
+    /// Sets the lens zoom, clamped to the device's (capped) supported range.
+    /// Safe to call from gesture handlers or button taps on the main thread.
+    func setZoom(_ factor: CGFloat) {
+        guard let device = videoDevice else { return }
+        let clamped = max(minZoomFactor, min(factor, maxZoomFactor))
+        do {
+            try device.lockForConfiguration()
+            device.videoZoomFactor = clamped
+            device.unlockForConfiguration()
+            zoomFactor = clamped
+        } catch {
+            // Non-fatal: zoom just won't change this time.
         }
     }
 
