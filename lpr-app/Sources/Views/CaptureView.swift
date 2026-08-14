@@ -41,6 +41,7 @@ struct CaptureView: View {
     @State private var detectedState: String?
     @State private var savedPlateText = ""
 
+    @State private var previewSize: CGSize = .zero
     @State private var zoomGestureBaseline: CGFloat = 1.0
     @State private var isAutoScanEnabled = false
     @State private var autoScanTask: Task<Void, Never>?
@@ -112,16 +113,12 @@ struct CaptureView: View {
                 .ignoresSafeArea(edges: .top)
 
                 GeometryReader { geo in
-                    // Based on the shorter screen dimension so the framing
-                    // box stays a sensible, plate-shaped size in landscape
-                    // too, instead of stretching edge-to-edge on the long
-                    // axis the way a naive geo.size.width-based box would.
-                    let shortSide = min(geo.size.width, geo.size.height)
-                    let width = min(geo.size.width - 96, shortSide * 1.4)
-                    let height = min(width * 0.5, geo.size.height - 120)
+                    let box = PlateFrameGeometry.boxRect(in: geo.size)
                     FramingBrackets()
-                        .frame(width: max(width, 0), height: max(height, 0))
+                        .frame(width: box.width, height: box.height)
                         .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                        .onAppear { previewSize = geo.size }
+                        .onChange(of: geo.size) { _, newSize in previewSize = newSize }
                 }
                 .ignoresSafeArea(edges: .top)
 
@@ -324,7 +321,17 @@ struct CaptureView: View {
     }
 
     private func handleCaptured(image: UIImage, isAuto: Bool) {
-        PlateOCRService.recognizePlates(in: image) { result in
+        // OCR only the framing-box region (plus a little tolerance) so
+        // street signs, other plates, etc. elsewhere in the shot don't get
+        // read as candidates — the full photo is still what gets saved.
+        let ocrInput: UIImage
+        if previewSize != .zero {
+            let fractionalBox = PlateFrameGeometry.fractionalBoxRect(in: previewSize)
+            ocrInput = image.croppedToPreviewRegion(previewSize: previewSize, fractionalRect: fractionalBox)
+        } else {
+            ocrInput = image
+        }
+        PlateOCRService.recognizePlates(in: ocrInput) { result in
             DispatchQueue.main.async {
                 isReading = false
 
