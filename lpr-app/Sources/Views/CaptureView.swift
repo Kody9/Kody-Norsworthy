@@ -87,11 +87,14 @@ struct CaptureView: View {
     private var cameraPhase: some View {
         VStack(spacing: 0) {
             ZStack {
-                if camera.isConfigured {
-                    CameraPreview(session: camera.session)
-                } else {
-                    Color.black
+                Group {
+                    if camera.isConfigured {
+                        CameraPreview(session: camera.session)
+                    } else {
+                        Color.black
+                    }
                 }
+                .ignoresSafeArea(edges: .top)
 
                 GeometryReader { geo in
                     let width = geo.size.width - 96
@@ -100,7 +103,12 @@ struct CaptureView: View {
                         .frame(width: width, height: height)
                         .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 }
+                .ignoresSafeArea(edges: .top)
 
+                // Controls stay inside the normal safe area (below the
+                // Dynamic Island / status bar, clear of the Control Center
+                // swipe zone at the very top edge) even though the camera
+                // feed behind them bleeds full-screen.
                 VStack {
                     HStack {
                         Spacer()
@@ -120,7 +128,6 @@ struct CaptureView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
-            .ignoresSafeArea(edges: .top)
             .gesture(
                 MagnificationGesture()
                     .onChanged { value in
@@ -200,7 +207,7 @@ struct CaptureView: View {
     }
 
     private var zoomPresets: [CGFloat] {
-        [1, 2, 3].filter { $0 <= camera.maxZoomFactor }
+        [1, 2, 3, 5, 10].filter { $0 <= camera.maxZoomFactor }
     }
 
     private func requestPermissions() {

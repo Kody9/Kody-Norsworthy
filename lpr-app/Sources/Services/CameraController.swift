@@ -48,10 +48,11 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
         session.commitConfiguration()
         session.startRunning()
 
-        // Cap digital zoom well below the device's reported maximum — past
-        // roughly 8x on an iPhone's main lens the image is too degraded to
-        // read a plate from anyway.
-        let cappedMax = min(device.maxAvailableVideoZoomFactor, 8.0)
+        // Some devices report absurd triple-digit "max" digital zoom that's
+        // pure noise by the time you get there — cap well below that, but
+        // high enough to be genuinely useful for reading a plate from a
+        // parking-lot distance on a device with a telephoto lens.
+        let cappedMax = min(device.maxAvailableVideoZoomFactor, 15.0)
 
         DispatchQueue.main.async { [weak self] in
             self?.videoDevice = device
