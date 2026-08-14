@@ -12,8 +12,7 @@ struct EntryDetailView: View {
     @State private var vinDecodeResult: NHTSAVinDecoder.Result?
     @State private var isDecoding = false
     @State private var decodeError: String?
-    @State private var shareURL: URL?
-    @State private var showShareSheet = false
+    @State private var shareFile: ShareableFile?
     @State private var showDeleteConfirmation = false
 
     private var displayState: String {
@@ -37,10 +36,8 @@ struct EntryDetailView: View {
             notAvailablePanel
         }
         .background(PLColor.ground)
-        .sheet(isPresented: $showShareSheet) {
-            if let shareURL {
-                ShareSheet(activityItems: [shareURL])
-            }
+        .sheet(item: $shareFile) { file in
+            ShareSheet(activityItems: [file.url])
         }
         .alert("Delete This Entry?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive, action: deleteEntry)
@@ -84,8 +81,7 @@ struct EntryDetailView: View {
 
     private func shareEntry() {
         guard let url = EntryShareExporter.makePDF(for: entry) else { return }
-        shareURL = url
-        showShareSheet = true
+        shareFile = ShareableFile(url: url)
     }
 
     private func deleteEntry() {

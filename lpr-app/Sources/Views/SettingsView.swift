@@ -11,8 +11,7 @@ struct SettingsView: View {
     @AppStorage("hasAcceptedDisclaimer") private var hasAcceptedDisclaimer = true
     @AppStorage("retentionDays") private var retentionDays = 30
 
-    @State private var shareURL: URL?
-    @State private var showShareSheet = false
+    @State private var shareFile: ShareableFile?
     @State private var showClearConfirmation = false
 
     private let retentionOptions = [7, 14, 30, 60, 90, 0]
@@ -30,8 +29,9 @@ struct SettingsView: View {
                 sectionLabel("DATA")
                 row { LabeledRow(label: "Total Entries", value: "\(entries.count)") }
                 actionRow("Export as CSV") {
-                    shareURL = CSVExporter.export(entries)
-                    showShareSheet = shareURL != nil
+                    if let url = CSVExporter.export(entries) {
+                        shareFile = ShareableFile(url: url)
+                    }
                 }
                 actionRow("Clear All Data", destructive: true, showRule: false) {
                     showClearConfirmation = true
@@ -69,10 +69,8 @@ struct SettingsView: View {
             }
         }
         .background(PLColor.ground)
-        .sheet(isPresented: $showShareSheet) {
-            if let shareURL {
-                ShareSheet(activityItems: [shareURL])
-            }
+        .sheet(item: $shareFile) { file in
+            ShareSheet(activityItems: [file.url])
         }
         .alert("Clear All Data?", isPresented: $showClearConfirmation) {
             Button("Delete Everything", role: .destructive, action: clearAll)
@@ -138,6 +136,16 @@ private struct LabeledRow: View {
             Text(value).plType(PLTypeStyle(.semibold, 14)).foregroundStyle(PLColor.ink)
         }
     }
+}
+
+/// Wraps a URL so it can drive `.sheet(item:)`, which — unlike
+/// `.sheet(isPresented:)` paired with a separately-tracked optional — is
+/// guaranteed to have the value available when its content closure runs.
+/// (isPresented + a sibling @State optional can present before that
+/// optional is visible to the closure, rendering an empty sheet.)
+struct ShareableFile: Identifiable {
+    let id = UUID()
+    let url: URL
 }
 
 struct ShareSheet: UIViewControllerRepresentable {
