@@ -13,11 +13,13 @@ struct ReadEntryView: View {
     let location: CLLocation?
     let detectedState: String?
     let isManualEntry: Bool
-    let onSave: (String, String) -> Void
+    let onSave: (String, String, String) -> Void
     let onRetake: () -> Void
 
     @State private var correctedText: String?
     @State private var showCorrectionEditor = false
+    @State private var correctedState: String?
+    @State private var showStatePicker = false
 
     private let tags = ["General", "BOLO", "Suspicious", "Parking Complaint", "Follow-up"]
 
@@ -38,6 +40,11 @@ struct ReadEntryView: View {
     private var readLabel: String {
         if correctedText != nil { return "CORRECTED" }
         return isManualEntry ? "MANUAL ENTRY" : "ON-DEVICE OCR"
+    }
+
+    /// A manual pick wins over whatever (if anything) auto-detection found.
+    private var displayedState: String {
+        correctedState ?? detectedState ?? "Unknown"
     }
 
     var body: some View {
@@ -66,6 +73,15 @@ struct ReadEntryView: View {
                     showCorrectionEditor = false
                 },
                 onCancel: { showCorrectionEditor = false }
+            )
+        }
+        .fullScreenCover(isPresented: $showStatePicker) {
+            StatePickerView(
+                onSelect: { state in
+                    correctedState = state
+                    showStatePicker = false
+                },
+                onCancel: { showStatePicker = false }
             )
         }
     }
@@ -188,9 +204,15 @@ struct ReadEntryView: View {
             HStack {
                 Text("TAG").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
                 Spacer()
-                Text(locationLabel)
-                    .plType(PLTypeStyle(.bold, 10, trackingEm: 0.1))
-                    .foregroundStyle(PLColor.inkTertiary)
+                Button {
+                    showStatePicker = true
+                } label: {
+                    Text(locationLabel)
+                        .underline()
+                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.1))
+                        .foregroundStyle(PLColor.inkTertiary)
+                }
+                .buttonStyle(.plain)
             }
             FlowLayout(spacing: PLSpacing.sm) {
                 ForEach(tags, id: \.self) { tag in
@@ -225,7 +247,7 @@ struct ReadEntryView: View {
                 isDisabled: displayedText == nil
             ) {
                 if let text = displayedText {
-                    onSave(text, selectedTag)
+                    onSave(text, selectedTag, displayedState)
                 }
             }
             PLSecondaryButton(["RE", "SHOOT"], action: onRetake)
@@ -234,7 +256,7 @@ struct ReadEntryView: View {
     }
 
     private var locationLabel: String {
-        let state = (detectedState ?? "Unknown").uppercased()
+        let state = displayedState.uppercased()
         guard let location else { return state }
         return String(format: "%@ · %.4f, %.4f", state, location.coordinate.latitude, location.coordinate.longitude)
     }

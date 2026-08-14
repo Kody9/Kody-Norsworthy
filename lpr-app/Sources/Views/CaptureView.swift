@@ -404,10 +404,10 @@ struct CaptureView: View {
         phase = .read
     }
 
-    private func saveEntry(plateText: String, tag: String) {
+    private func saveEntry(plateText: String, tag: String, state: String) {
         let entry = PlateEntry(
             plateNumber: plateText.uppercased(),
-            state: detectedState ?? "Unknown",
+            state: state,
             latitude: capturedLocation?.coordinate.latitude,
             longitude: capturedLocation?.coordinate.longitude,
             tag: tag,
