@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Gloved / no-camera fallback. Near-black, oversized keys, 8-character
 /// cap, plate echoed at display size. Reused from the capture flow's
@@ -10,16 +11,22 @@ struct ManualEntryView: View {
     var title: String = "MANUAL ENTRY"
     var primaryLabel: String = "LOG PLATE"
     var primarySubLabel: String? = "GPS + TIMESTAMP ATTACHED"
+    /// The captured frame, if one exists, shown above the keyboard so the
+    /// plate can be typed while looking straight at it instead of having
+    /// to remember what it said.
+    var image: UIImage? = nil
     let onLog: (String) -> Void
     let onCancel: () -> Void
 
     @State private var text: String
+    @State private var showZoomedPhoto = false
 
     init(
         initialText: String = "",
         title: String = "MANUAL ENTRY",
         primaryLabel: String = "LOG PLATE",
         primarySubLabel: String? = "GPS + TIMESTAMP ATTACHED",
+        image: UIImage? = nil,
         onLog: @escaping (String) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -27,6 +34,7 @@ struct ManualEntryView: View {
         self.title = title
         self.primaryLabel = primaryLabel
         self.primarySubLabel = primarySubLabel
+        self.image = image
         self.onLog = onLog
         self.onCancel = onCancel
         _text = State(initialValue: initialText.uppercased())
@@ -56,6 +64,8 @@ struct ManualEntryView: View {
             // landscape iPhone's ~375-430pt height alongside everything else.
             ScrollView {
                 VStack(spacing: 0) {
+                    photoReference
+
                     VStack(alignment: .leading, spacing: 10) {
                         Text("PLATE")
                             .plType(.sectionLabel)
@@ -144,5 +154,41 @@ struct ManualEntryView: View {
             .padding(.bottom, PLSpacing.gutter)
         }
         .background(PLColor.groundNight)
+        .fullScreenCover(isPresented: $showZoomedPhoto) {
+            if let image {
+                PhotoZoomView(image: image, onDone: { showZoomedPhoto = false })
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var photoReference: some View {
+        if let image {
+            Button {
+                showZoomedPhoto = true
+            } label: {
+                ZStack(alignment: .bottomTrailing) {
+                    Color.black
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .grayscale(1.0)
+                    Text("TAP TO ZOOM")
+                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
+                        .foregroundStyle(PLColor.ink)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.6))
+                        .padding(8)
+                }
+            }
+            .buttonStyle(.plain)
+            .frame(height: 110)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
+            }
+        }
     }
 }

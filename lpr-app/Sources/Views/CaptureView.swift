@@ -74,6 +74,7 @@ struct CaptureView: View {
                 SavedConfirmationView(plateText: savedPlateText)
             case .manualEntry:
                 ManualEntryView(
+                    image: capturedImage,
                     onLog: { text in beginRead(withManualText: text) },
                     onCancel: { phase = .camera }
                 )

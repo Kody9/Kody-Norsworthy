@@ -69,6 +69,7 @@ struct ReadEntryView: View {
                 title: "CORRECT READ",
                 primaryLabel: "USE THIS",
                 primarySubLabel: nil,
+                image: image,
                 onLog: { text in
                     correctedText = text
                     showCorrectionEditor = false
