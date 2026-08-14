@@ -12,24 +12,37 @@ enum PlateOCRService {
         let confidence: Float
     }
 
-    static func recognizePlates(in image: UIImage, completion: @escaping ([Candidate]) -> Void) {
+    struct Result {
+        let candidates: [Candidate]
+        /// Best-effort guess from any state name/slogan text Vision also
+        /// found on the plate. Nil when nothing matched — the caller
+        /// should fall back to "Unknown" and let the user fill it in.
+        let detectedState: String?
+    }
+
+    static func recognizePlates(in image: UIImage, completion: @escaping (Result) -> Void) {
         guard let cgImage = image.cgImage else {
-            completion([])
+            completion(Result(candidates: [], detectedState: nil))
             return
         }
 
         let request = VNRecognizeTextRequest { request, error in
             guard error == nil, let observations = request.results as? [VNRecognizedTextObservation] else {
-                completion([])
+                completion(Result(candidates: [], detectedState: nil))
                 return
             }
+            let recognizedStrings = observations.compactMap { $0.topCandidates(1).first?.string }
             let candidates = observations.compactMap { observation -> Candidate? in
                 guard let top = observation.topCandidates(1).first else { return nil }
                 let cleaned = sanitize(top.string)
                 guard isPlausiblePlate(cleaned) else { return nil }
                 return Candidate(text: cleaned, confidence: top.confidence)
             }
-            completion(dedupe(candidates).sorted { $0.confidence > $1.confidence })
+            let detectedState = StateDetector.detectState(from: recognizedStrings)
+            completion(Result(
+                candidates: dedupe(candidates).sorted { $0.confidence > $1.confidence },
+                detectedState: detectedState
+            ))
         }
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false

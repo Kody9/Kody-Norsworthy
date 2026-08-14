@@ -27,6 +27,7 @@ struct CaptureView: View {
     @State private var isManualEntry = false
     @State private var capturedImage: UIImage?
     @State private var capturedLocation: CLLocation?
+    @State private var detectedState: String?
     @State private var savedPlateText = ""
 
     var body: some View {
@@ -41,6 +42,7 @@ struct CaptureView: View {
                     selectedIndex: $selectedIndex,
                     selectedTag: $selectedTag,
                     location: capturedLocation,
+                    detectedState: detectedState,
                     isManualEntry: isManualEntry,
                     onSave: saveEntry,
                     onRetake: { resetToCamera() }
@@ -170,18 +172,19 @@ struct CaptureView: View {
     }
 
     private func handleCaptured(image: UIImage) {
-        PlateOCRService.recognizePlates(in: image) { foundCandidates in
+        PlateOCRService.recognizePlates(in: image) { result in
             DispatchQueue.main.async {
                 isReading = false
                 capturedImage = image
                 capturedLocation = locationService.lastLocation
-                if foundCandidates.isEmpty {
+                if result.candidates.isEmpty {
                     phase = .noPlateFound
                 } else {
-                    candidates = foundCandidates
+                    candidates = result.candidates
                     selectedIndex = 0
                     selectedTag = "BOLO"
                     isManualEntry = false
+                    detectedState = result.detectedState
                     phase = .read
                 }
             }
@@ -195,13 +198,14 @@ struct CaptureView: View {
         isManualEntry = true
         capturedImage = nil
         capturedLocation = locationService.lastLocation
+        detectedState = nil
         phase = .read
     }
 
     private func saveEntry(plateText: String, tag: String) {
         let entry = PlateEntry(
             plateNumber: plateText.uppercased(),
-            state: "Unknown",
+            state: detectedState ?? "Unknown",
             latitude: capturedLocation?.coordinate.latitude,
             longitude: capturedLocation?.coordinate.longitude,
             tag: tag,
@@ -223,6 +227,7 @@ struct CaptureView: View {
         isManualEntry = false
         capturedImage = nil
         capturedLocation = nil
+        detectedState = nil
         phase = .camera
     }
 }

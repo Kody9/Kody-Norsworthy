@@ -11,6 +11,7 @@ struct ReadEntryView: View {
     @Binding var selectedIndex: Int
     @Binding var selectedTag: String
     let location: CLLocation?
+    let detectedState: String?
     let isManualEntry: Bool
     let onSave: (String, String) -> Void
     let onRetake: () -> Void
@@ -194,8 +195,9 @@ struct ReadEntryView: View {
     }
 
     private var locationLabel: String {
-        guard let location else { return "UNKNOWN" }
-        return String(format: "UNKNOWN · %.4f, %.4f", location.coordinate.latitude, location.coordinate.longitude)
+        let state = (detectedState ?? "Unknown").uppercased()
+        guard let location else { return state }
+        return String(format: "%@ · %.4f, %.4f", state, location.coordinate.latitude, location.coordinate.longitude)
     }
 
     private func chipLabel(for tag: String) -> String {
