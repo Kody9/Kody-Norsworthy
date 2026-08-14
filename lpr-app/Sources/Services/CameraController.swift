@@ -73,9 +73,8 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
 
         // Some devices report absurd triple-digit "max" digital zoom that's
         // pure noise by the time you get there — cap well below that, but
-        // high enough to be genuinely useful for reading a plate from a
-        // parking-lot distance on a device with a telephoto lens.
-        let cappedMax = min(device.maxAvailableVideoZoomFactor, 15.0)
+        // high enough to be genuinely useful on a Pro-class telephoto lens.
+        let cappedMax = min(device.maxAvailableVideoZoomFactor, 30.0)
 
         DispatchQueue.main.async { [weak self] in
             self?.videoDevice = device
@@ -124,14 +123,17 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
 
     /// Grabs the next live video frame without triggering the photo pipeline
     /// (no shutter sound). Slightly lower fidelity than `capturePhoto()`,
-    /// which is an acceptable tradeoff for a background check every couple
-    /// of seconds versus a deliberate capture.
+    /// an acceptable tradeoff since auto-scan calls this back-to-back —
+    /// there's no fixed interval between attempts anymore, so this is the
+    /// throttle: a new grab only starts once the previous one (frame +
+    /// OCR) has fully finished.
     ///
     /// Always calls `completion` exactly once, even if no frame ever
     /// arrives (e.g. the video data output failed to attach on this
-    /// device) — a `nil` after ~1.5s rather than silently hanging forever,
-    /// which previously left the caller's "is a capture in flight" state
-    /// stuck true and permanently blocked all further auto-scan attempts.
+    /// device) — a `nil` after ~0.75s rather than silently hanging
+    /// forever, which previously left the caller's "is a capture in
+    /// flight" state stuck true and permanently blocked all further
+    /// auto-scan attempts.
     func captureFrameSilently(completion: @escaping (UIImage?) -> Void) {
         applyCurrentOrientationToOutputs()
         let requestID = UUID()
@@ -139,11 +141,21 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
             self?.pendingFrameRequestID = requestID
             self?.pendingFrameCompletion = completion
         }
-        videoDataQueue.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        videoDataQueue.asyncAfter(deadline: .now() + 0.75) { [weak self] in
             guard let self, self.pendingFrameRequestID == requestID else { return }
             self.pendingFrameRequestID = nil
             self.pendingFrameCompletion = nil
             DispatchQueue.main.async { completion(nil) }
+        }
+    }
+
+    /// Async convenience over the completion-based grab, for use in a
+    /// tight `while` loop (auto-scan) without nested closures.
+    func captureFrameSilently() async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            captureFrameSilently { image in
+                continuation.resume(returning: image)
+            }
         }
     }
 

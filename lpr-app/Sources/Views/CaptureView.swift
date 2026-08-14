@@ -4,6 +4,7 @@ import CoreLocation
 import SwiftData
 import SwiftUI
 import UIKit
+import Vision
 
 enum CapturePhase {
     case camera
@@ -96,7 +97,7 @@ struct CaptureView: View {
             stopAutoScan()
         }
         .onReceive(camera.$capturedImage.compactMap { $0 }) { image in
-            handleCaptured(image: image, isAuto: false)
+            Task { await handleCaptured(image: image, isAuto: false) }
         }
     }
 
@@ -245,7 +246,9 @@ struct CaptureView: View {
     }
 
     private var zoomPresets: [CGFloat] {
-        [1, 2, 3, 5, 10].filter { $0 <= camera.maxZoomFactor }
+        // Capped at 6 so the row doesn't overcrowd/clip next to the caption
+        // text sharing the same corner.
+        [1, 2, 5, 10, 20, 30].filter { $0 <= camera.maxZoomFactor }
     }
 
     private func requestPermissions() {
@@ -289,29 +292,44 @@ struct CaptureView: View {
         }
     }
 
-    /// Periodically grabs a silent frame and OCRs it in the background, so
-    /// you don't have to tap for each passing car (and it doesn't click the
-    /// shutter every couple of seconds — see captureFrameSilently). A
-    /// confident, not-recently-seen plate goes into `pendingDetections`; it
-    /// does NOT interrupt what you're doing. Review (and explicitly save or
-    /// discard) happens later, via the REVIEW button. Nothing is ever saved
-    /// without that step.
+    /// Grabs a silent frame and OCRs it, back-to-back with no fixed delay
+    /// between attempts — the only throttle is however long "grab a frame +
+    /// run OCR" actually takes, which is what lets this keep up with a
+    /// moving vehicle instead of sampling once every couple of seconds and
+    /// missing anything that passed through in between. Uses Vision's
+    /// `.fast` recognition specifically for this loop (manual captures
+    /// still use `.accurate`) to keep each pass as quick as possible; a
+    /// human reviews every result before anything saves regardless of
+    /// which recognition level found it.
+    ///
+    /// A confident, not-recently-seen plate goes into `pendingDetections`;
+    /// it does NOT interrupt what you're doing. Review (and explicitly
+    /// save or discard) happens later, via the REVIEW button.
     private func startAutoScan() {
         autoScanTask?.cancel()
         autoScanTask = Task {
+            var lastLocationRequest = Date.distantPast
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard !Task.isCancelled else { return }
-                guard isAutoScanEnabled, phase == .camera, !isReading, camera.isConfigured else { continue }
-                isReading = true
-                locationService.requestOneShotLocation()
-                camera.captureFrameSilently { image in
-                    guard let image else {
-                        isReading = false
-                        return
-                    }
-                    handleCaptured(image: image, isAuto: true)
+                guard isAutoScanEnabled, phase == .camera, camera.isConfigured else {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    continue
                 }
+                guard !isReading else {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    continue
+                }
+                isReading = true
+                // GPS doesn't update meaningfully faster than ~1/sec anyway
+                // -- avoid hammering CLLocationManager every single pass.
+                if Date.now.timeIntervalSince(lastLocationRequest) > 2 {
+                    lastLocationRequest = Date.now
+                    locationService.requestOneShotLocation()
+                }
+                guard let image = await camera.captureFrameSilently() else {
+                    isReading = false
+                    continue
+                }
+                await handleCaptured(image: image, isAuto: true)
             }
         }
     }
@@ -321,7 +339,7 @@ struct CaptureView: View {
         autoScanTask = nil
     }
 
-    private func handleCaptured(image: UIImage, isAuto: Bool) {
+    private func handleCaptured(image: UIImage, isAuto: Bool) async {
         // OCR only the framing-box region (plus a little tolerance) so
         // street signs, other plates, etc. elsewhere in the shot don't get
         // read as candidates — the full photo is still what gets saved.
@@ -332,48 +350,52 @@ struct CaptureView: View {
         } else {
             ocrInput = image
         }
-        PlateOCRService.recognizePlates(in: ocrInput) { result in
-            DispatchQueue.main.async {
-                isReading = false
 
-                if isAuto {
-                    let now = Date.now
-                    guard
-                        let best = result.candidates.first,
-                        best.confidence >= 0.6
-                    else {
-                        return
-                    }
-                    if let lastSeen = recentAutoScanPlates[best.text], now.timeIntervalSince(lastSeen) < autoScanDedupWindow {
-                        return
-                    }
-                    recentAutoScanPlates[best.text] = now
-                    recentAutoScanPlates = recentAutoScanPlates.filter { now.timeIntervalSince($0.value) < autoScanDedupWindow }
-                    pendingDetections.append(PendingDetection(
-                        candidates: result.candidates,
-                        image: image,
-                        location: locationService.lastLocation,
-                        detectedState: result.detectedState
-                    ))
-                    if pendingDetections.count > 20 {
-                        pendingDetections.removeFirst()
-                    }
-                    return
-                }
-
-                capturedImage = image
-                capturedLocation = locationService.lastLocation
-                if result.candidates.isEmpty {
-                    phase = .noPlateFound
-                } else {
-                    candidates = result.candidates
-                    selectedIndex = 0
-                    selectedTag = "BOLO"
-                    isManualEntry = false
-                    detectedState = result.detectedState
-                    phase = .read
-                }
+        let recognitionLevel: VNRequestTextRecognitionLevel = isAuto ? .fast : .accurate
+        let result = await withCheckedContinuation { continuation in
+            PlateOCRService.recognizePlates(in: ocrInput, recognitionLevel: recognitionLevel) { result in
+                continuation.resume(returning: result)
             }
+        }
+
+        isReading = false
+
+        if isAuto {
+            let now = Date.now
+            guard
+                let best = result.candidates.first,
+                best.confidence >= 0.4
+            else {
+                return
+            }
+            if let lastSeen = recentAutoScanPlates[best.text], now.timeIntervalSince(lastSeen) < autoScanDedupWindow {
+                return
+            }
+            recentAutoScanPlates[best.text] = now
+            recentAutoScanPlates = recentAutoScanPlates.filter { now.timeIntervalSince($0.value) < autoScanDedupWindow }
+            pendingDetections.append(PendingDetection(
+                candidates: result.candidates,
+                image: image,
+                location: locationService.lastLocation,
+                detectedState: result.detectedState
+            ))
+            if pendingDetections.count > 20 {
+                pendingDetections.removeFirst()
+            }
+            return
+        }
+
+        capturedImage = image
+        capturedLocation = locationService.lastLocation
+        if result.candidates.isEmpty {
+            phase = .noPlateFound
+        } else {
+            candidates = result.candidates
+            selectedIndex = 0
+            selectedTag = "BOLO"
+            isManualEntry = false
+            detectedState = result.detectedState
+            phase = .read
         }
     }
 
@@ -406,8 +428,15 @@ struct CaptureView: View {
         selectedIndex = 0
         selectedTag = "BOLO"
         isManualEntry = true
-        capturedImage = nil
-        capturedLocation = locationService.lastLocation
+        // If this came from "No plate found" -> "Type the plate," a real
+        // photo of the vehicle already exists from that failed OCR attempt
+        // -- keep it instead of discarding it just because OCR couldn't
+        // read the plate off it. Only reaching manual entry with no prior
+        // capture (straight from the camera's TYPE IT IN button, or
+        // camera-denied) has nothing to preserve.
+        if capturedImage == nil {
+            capturedLocation = locationService.lastLocation
+        }
         detectedState = nil
         phase = .read
     }

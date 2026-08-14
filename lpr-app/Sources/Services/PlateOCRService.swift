@@ -20,7 +20,15 @@ enum PlateOCRService {
         let detectedState: String?
     }
 
-    static func recognizePlates(in image: UIImage, completion: @escaping (Result) -> Void) {
+    /// - Parameter recognitionLevel: `.accurate` (default) for deliberate
+    ///   captures; auto-scan passes `.fast` instead, trading some accuracy
+    ///   for enough speed to keep up with a moving vehicle — a human
+    ///   reviews every result before anything saves either way.
+    static func recognizePlates(
+        in image: UIImage,
+        recognitionLevel: VNRequestTextRecognitionLevel = .accurate,
+        completion: @escaping (Result) -> Void
+    ) {
         guard let cgImage = image.cgImage else {
             completion(Result(candidates: [], detectedState: nil))
             return
@@ -44,12 +52,20 @@ enum PlateOCRService {
                 detectedState: detectedState
             ))
         }
-        request.recognitionLevel = .accurate
+        request.recognitionLevel = recognitionLevel
         request.usesLanguageCorrection = false
 
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: cgOrientation(from: image.imageOrientation))
         DispatchQueue.global(qos: .userInitiated).async {
-            try? handler.perform([request])
+            // `try?` would silently swallow a thrown error here and never
+            // call the request's completion handler at all -- guarantee
+            // completion always fires exactly once, or a caller awaiting
+            // this via a continuation could hang forever.
+            do {
+                try handler.perform([request])
+            } catch {
+                completion(Result(candidates: [], detectedState: nil))
+            }
         }
     }
 
