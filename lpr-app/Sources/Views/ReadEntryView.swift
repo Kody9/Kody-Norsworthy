@@ -135,16 +135,6 @@ struct ReadEntryView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("READ").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
                 Spacer()
-                Button {
-                    showCorrectionEditor = true
-                } label: {
-                    Text("EDIT")
-                        .underline()
-                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.1))
-                        .foregroundStyle(PLColor.ink)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 10)
                 Text(readLabel)
                     .plType(PLTypeStyle(.bold, 10, trackingEm: 0.1))
                     .foregroundStyle(PLColor.accentOnDark)
@@ -182,6 +172,9 @@ struct ReadEntryView: View {
                     .overlay(Rectangle().stroke(PLColor.accentOnDark, lineWidth: PLSpacing.ruleWidth))
                     .padding(.top, 10)
             }
+
+            manualOverrideButton
+                .padding(.top, 12)
         }
         .padding(.horizontal, PLSpacing.gutter)
         .padding(.top, PLSpacing.gutter)
@@ -189,6 +182,30 @@ struct ReadEntryView: View {
         .overlay(alignment: .top) {
             Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
         }
+    }
+
+    /// Always visible, not just when confidence is low — a tight OCR crop
+    /// on the framing box often surfaces exactly one reading with nothing
+    /// to pick between in `alternateReads`, so this is the one guaranteed
+    /// way to override a wrong read by hand, on every Read screen visit
+    /// (a live capture, a queued auto-scan detection, or manual entry).
+    private var manualOverrideButton: some View {
+        Button {
+            showCorrectionEditor = true
+        } label: {
+            HStack {
+                Text("NOT RIGHT? TYPE THE PLATE")
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.06))
+                Spacer()
+                Text("→")
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.06))
+            }
+            .foregroundStyle(PLColor.ink)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+            .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
+        }
+        .buttonStyle(.plain)
     }
 
     private var alternateReads: some View {

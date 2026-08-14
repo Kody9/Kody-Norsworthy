@@ -68,8 +68,6 @@ final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
 
     private func commonInit() {
         delegate = self
-        minimumZoomScale = 1.0
-        maximumZoomScale = 8.0
         bouncesZoom = true
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
@@ -87,24 +85,40 @@ final class ZoomingScrollView: UIScrollView, UIScrollViewDelegate {
         guard image !== currentImage else { return }
         currentImage = image
         imageView.image = image
-        zoomScale = 1.0
+        // Native image size, not a bounds-fitted size -- UIScrollView's
+        // zoom mechanism scales this view via minimumZoomScale/zoomScale,
+        // it isn't something layoutSubviews should ever recompute.
+        imageView.frame = CGRect(origin: .zero, size: image.size)
+        contentSize = image.size
         setNeedsLayout()
     }
 
+    /// Only recomputes the zoom-scale range and re-centers -- must NOT touch
+    /// imageView's frame size. layoutSubviews fires continuously during an
+    /// active pinch gesture (UIScrollView drives the zoom by transforming
+    /// the zoomed view), so resetting the frame here on every pass would
+    /// snap the image straight back to its un-zoomed size each time,
+    /// which is exactly what made pinch-to-zoom look like it did nothing.
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard let image = currentImage, image.size.width > 0, image.size.height > 0 else { return }
+        guard
+            let image = currentImage,
+            image.size.width > 0, image.size.height > 0,
+            bounds.width > 0, bounds.height > 0
+        else { return }
 
-        let imageAspect = image.size.width / image.size.height
-        let boundsAspect = bounds.width / bounds.height
-        let fitSize: CGSize
-        if imageAspect > boundsAspect {
-            fitSize = CGSize(width: bounds.width, height: bounds.width / imageAspect)
-        } else {
-            fitSize = CGSize(width: bounds.height * imageAspect, height: bounds.height)
+        let widthScale = bounds.width / image.size.width
+        let heightScale = bounds.height / image.size.height
+        let minScale = min(widthScale, heightScale)
+
+        if minimumZoomScale != minScale {
+            let wasAtMinimum = zoomScale <= minimumZoomScale || minimumZoomScale == 0
+            minimumZoomScale = minScale
+            maximumZoomScale = minScale * 8
+            if wasAtMinimum {
+                zoomScale = minScale
+            }
         }
-        imageView.frame = CGRect(origin: .zero, size: fitSize)
-        contentSize = fitSize
         centerImage()
     }
 
