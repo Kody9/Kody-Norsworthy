@@ -304,6 +304,7 @@ struct CaptureView: View {
                 guard !Task.isCancelled else { return }
                 guard isAutoScanEnabled, phase == .camera, !isReading, camera.isConfigured else { continue }
                 isReading = true
+                locationService.requestOneShotLocation()
                 camera.captureFrameSilently { image in
                     guard let image else {
                         isReading = false

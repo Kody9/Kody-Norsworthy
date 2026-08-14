@@ -87,13 +87,17 @@ extension Color {
     }
 }
 
-/// A flush-left, full-width primary action: 88pt tall, filled accent,
-/// optional sub-label. Used for READ PLATE / LOG PLATE throughout.
+/// A flush-left, full-width primary action: 88pt tall (56pt on a landscape
+/// iPhone, where full height would eat a huge share of the much shorter
+/// screen), filled accent, optional sub-label. Used for READ PLATE / LOG
+/// PLATE throughout.
 struct PLPrimaryButton: View {
     let title: String
     let subLabel: String?
     let isDisabled: Bool
     let action: () -> Void
+
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     init(_ title: String, subLabel: String? = nil, isDisabled: Bool = false, action: @escaping () -> Void) {
         self.title = title
@@ -102,16 +106,18 @@ struct PLPrimaryButton: View {
         self.action = action
     }
 
+    private var isCompact: Bool { verticalSizeClass == .compact }
+
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).plType(.buttonPrimary)
-                if let subLabel {
+                if let subLabel, !isCompact {
                     Text(subLabel).plType(.buttonSubLabel).opacity(0.85)
                 }
             }
             .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: isCompact ? 56 : 88, alignment: .leading)
             .foregroundStyle(.white)
             .background(PLColor.accent)
         }
@@ -126,6 +132,8 @@ struct PLSecondaryButton: View {
     let lines: [String]
     let width: CGFloat
     let action: () -> Void
+
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     init(_ lines: [String], width: CGFloat = 96, action: @escaping () -> Void) {
         self.lines = lines
@@ -142,7 +150,7 @@ struct PLSecondaryButton: View {
             }
             .padding(.horizontal, 14)
             .frame(width: width)
-            .frame(minHeight: 88, alignment: .leading)
+            .frame(minHeight: verticalSizeClass == .compact ? 56 : 88, alignment: .leading)
             .foregroundStyle(PLColor.ink)
             .overlay(Rectangle().stroke(PLColor.ink, lineWidth: PLSpacing.ruleWidth))
         }
@@ -158,6 +166,8 @@ struct PLBlockButton: View {
     let height: CGFloat
     let action: () -> Void
 
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
     init(_ title: String, filled: Bool, height: CGFloat = 80, action: @escaping () -> Void) {
         self.title = title
         self.filled = filled
@@ -170,7 +180,7 @@ struct PLBlockButton: View {
             Text(title)
                 .plType(PLTypeStyle(.black, 18, trackingEm: 0.02))
                 .padding(.horizontal, 18)
-                .frame(maxWidth: .infinity, minHeight: height, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: verticalSizeClass == .compact ? 52 : height, alignment: .leading)
                 .foregroundStyle(filled ? .white : PLColor.ink)
                 .background(filled ? PLColor.accent : Color.clear)
                 .overlay(Rectangle().stroke(filled ? Color.clear : PLColor.ink, lineWidth: PLSpacing.ruleWidth))
