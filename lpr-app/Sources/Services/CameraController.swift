@@ -26,6 +26,7 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     private let ciContext = CIContext()
     private var videoDevice: AVCaptureDevice?
     private var pendingFrameCompletion: ((UIImage?) -> Void)?
+    private var pendingFrameRequestID: UUID?
 
     @Published var capturedImage: UIImage?
     @Published var isConfigured = false
@@ -125,16 +126,31 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     /// (no shutter sound). Slightly lower fidelity than `capturePhoto()`,
     /// which is an acceptable tradeoff for a background check every couple
     /// of seconds versus a deliberate capture.
+    ///
+    /// Always calls `completion` exactly once, even if no frame ever
+    /// arrives (e.g. the video data output failed to attach on this
+    /// device) — a `nil` after ~1.5s rather than silently hanging forever,
+    /// which previously left the caller's "is a capture in flight" state
+    /// stuck true and permanently blocked all further auto-scan attempts.
     func captureFrameSilently(completion: @escaping (UIImage?) -> Void) {
         applyCurrentOrientationToOutputs()
+        let requestID = UUID()
         videoDataQueue.async { [weak self] in
+            self?.pendingFrameRequestID = requestID
             self?.pendingFrameCompletion = completion
+        }
+        videoDataQueue.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.pendingFrameRequestID == requestID else { return }
+            self.pendingFrameRequestID = nil
+            self.pendingFrameCompletion = nil
+            DispatchQueue.main.async { completion(nil) }
         }
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let completion = pendingFrameCompletion else { return }
         pendingFrameCompletion = nil
+        pendingFrameRequestID = nil
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             DispatchQueue.main.async { completion(nil) }

@@ -44,8 +44,12 @@ struct CaptureView: View {
     @State private var zoomGestureBaseline: CGFloat = 1.0
     @State private var isAutoScanEnabled = false
     @State private var autoScanTask: Task<Void, Never>?
-    @State private var recentAutoScanPlates: [String] = []
+    /// Plate text -> when it was last queued. Suppresses re-queuing the same
+    /// still-parked car on every 2s tick while scanning past it, without
+    /// permanently blocking that plate for the rest of the session.
+    @State private var recentAutoScanPlates: [String: Date] = [:]
     @State private var pendingDetections: [PendingDetection] = []
+    private let autoScanDedupWindow: TimeInterval = 60
 
     var body: some View {
         Group {
@@ -325,17 +329,18 @@ struct CaptureView: View {
                 isReading = false
 
                 if isAuto {
+                    let now = Date.now
                     guard
                         let best = result.candidates.first,
-                        best.confidence >= 0.6,
-                        !recentAutoScanPlates.contains(best.text)
+                        best.confidence >= 0.6
                     else {
                         return
                     }
-                    recentAutoScanPlates.append(best.text)
-                    if recentAutoScanPlates.count > 8 {
-                        recentAutoScanPlates.removeFirst()
+                    if let lastSeen = recentAutoScanPlates[best.text], now.timeIntervalSince(lastSeen) < autoScanDedupWindow {
+                        return
                     }
+                    recentAutoScanPlates[best.text] = now
+                    recentAutoScanPlates = recentAutoScanPlates.filter { now.timeIntervalSince($0.value) < autoScanDedupWindow }
                     pendingDetections.append(PendingDetection(
                         candidates: result.candidates,
                         image: image,
