@@ -20,6 +20,7 @@ struct ReadEntryView: View {
     @State private var showCorrectionEditor = false
     @State private var correctedState: String?
     @State private var showStatePicker = false
+    @State private var showZoomedPhoto = false
 
     private let tags = ["General", "BOLO", "Suspicious", "Parking Complaint", "Follow-up"]
 
@@ -84,25 +85,46 @@ struct ReadEntryView: View {
                 onCancel: { showStatePicker = false }
             )
         }
+        .fullScreenCover(isPresented: $showZoomedPhoto) {
+            if let image {
+                PhotoZoomView(image: image, onDone: { showZoomedPhoto = false })
+            }
+        }
     }
 
     private var capturedFrame: some View {
-        ZStack(alignment: .bottomLeading) {
-            if let image {
-                Color.black
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .grayscale(1.0)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                Rectangle().fill(PLColor.surface)
+        Button {
+            if image != nil { showZoomedPhoto = true }
+        } label: {
+            ZStack(alignment: .bottomLeading) {
+                if let image {
+                    Color.black
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .grayscale(1.0)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Rectangle().fill(PLColor.surface)
+                }
+                Text("CAPTURED FRAME \(Date.now.formatted(.dateTime.hour().minute().second()))")
+                    .plType(.technicalCaption)
+                    .foregroundStyle(PLColor.inkTertiary)
+                    .padding(12)
+                if image != nil {
+                    Text("TAP TO ZOOM")
+                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
+                        .foregroundStyle(PLColor.ink)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.6))
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
-            Text("CAPTURED FRAME \(Date.now.formatted(.dateTime.hour().minute().second()))")
-                .plType(.technicalCaption)
-                .foregroundStyle(PLColor.inkTertiary)
-                .padding(12)
         }
+        .buttonStyle(.plain)
+        .disabled(image == nil)
         .frame(height: 150)
         .frame(maxWidth: .infinity)
         .clipped()

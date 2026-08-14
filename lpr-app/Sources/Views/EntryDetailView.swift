@@ -14,6 +14,7 @@ struct EntryDetailView: View {
     @State private var decodeError: String?
     @State private var shareFile: ShareableFile?
     @State private var showDeleteConfirmation = false
+    @State private var showZoomedPhoto = false
 
     private var displayState: String {
         entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
@@ -44,6 +45,11 @@ struct EntryDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This permanently deletes \(entry.plateNumber) from this device. This cannot be undone.")
+        }
+        .fullScreenCover(isPresented: $showZoomedPhoto) {
+            if let data = entry.photoData, let uiImage = UIImage(data: data) {
+                PhotoZoomView(image: uiImage, onDone: { showZoomedPhoto = false })
+            }
         }
     }
 
@@ -101,18 +107,33 @@ struct EntryDetailView: View {
     }
 
     private var photo: some View {
-        Group {
-            if let data = entry.photoData, let uiImage = UIImage(data: data) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .grayscale(1.0)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.black)
-            } else {
-                PLColor.surface.frame(height: 150)
+        Button {
+            showZoomedPhoto = true
+        } label: {
+            Group {
+                if let data = entry.photoData, let uiImage = UIImage(data: data) {
+                    ZStack(alignment: .bottomTrailing) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFit()
+                            .grayscale(1.0)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.black)
+                        Text("TAP TO ZOOM")
+                            .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
+                            .foregroundStyle(PLColor.ink)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.6))
+                            .padding(10)
+                    }
+                } else {
+                    PLColor.surface.frame(height: 150)
+                }
             }
         }
+        .buttonStyle(.plain)
+        .disabled(entry.photoData == nil)
         .frame(maxHeight: 220)
         .clipped()
     }

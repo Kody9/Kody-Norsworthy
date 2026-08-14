@@ -9,6 +9,8 @@ struct NoPlateFoundView: View {
     let onReshoot: () -> Void
     let onTypeIt: () -> Void
 
+    @State private var showZoomedPhoto = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Scrollable — the photo + title + body alone can exceed a
@@ -16,17 +18,30 @@ struct NoPlateFoundView: View {
             // clip the buttons below.
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ZStack {
-                        if let image {
-                            Color.black
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .grayscale(1.0)
-                        } else {
-                            PLColor.surface
+                    Button {
+                        if image != nil { showZoomedPhoto = true }
+                    } label: {
+                        ZStack(alignment: .bottomTrailing) {
+                            if let image {
+                                Color.black
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .grayscale(1.0)
+                                Text("TAP TO ZOOM")
+                                    .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
+                                    .foregroundStyle(PLColor.ink)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(Color.black.opacity(0.6))
+                                    .padding(10)
+                            } else {
+                                PLColor.surface
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
+                    .disabled(image == nil)
                     .frame(height: 200)
                     .frame(maxWidth: .infinity)
                     .clipped()
@@ -38,7 +53,7 @@ struct NoPlateFoundView: View {
                         Text("No plate\nfound")
                             .plType(.screenTitle)
                             .foregroundStyle(PLColor.ink)
-                        Text("The frame was too blurred to read. Nothing was saved. Reshoot, or type the plate — the photo and GPS are still attached either way.")
+                        Text("The frame was too blurred to read. Nothing was saved. Zoom into the photo to read it yourself, reshoot, or type the plate — the photo and GPS are still attached either way.")
                             .plType(.body)
                             .foregroundStyle(PLColor.inkSecondary)
                     }
@@ -54,5 +69,10 @@ struct NoPlateFoundView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PLColor.ground)
+        .fullScreenCover(isPresented: $showZoomedPhoto) {
+            if let image {
+                PhotoZoomView(image: image, onDone: { showZoomedPhoto = false })
+            }
+        }
     }
 }
