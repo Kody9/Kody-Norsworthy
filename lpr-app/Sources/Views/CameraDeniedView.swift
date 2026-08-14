@@ -22,28 +22,32 @@ struct CameraDeniedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: PLSpacing.sm) {
-                Text("PERMISSION REQUIRED")
-                    .plType(.sectionLabel)
-                    .foregroundStyle(PLColor.accentOnDark)
-                Text("Camera access\nis off")
-                    .plType(.screenTitle)
-                    .foregroundStyle(PLColor.ink)
-                Text("This app can't quick-capture plates without camera access. Location is optional — entries still save without it.")
-                    .plType(.body)
-                    .foregroundStyle(PLColor.inkSecondary)
-            }
-            .padding(PLSpacing.gutter)
+            // Scrollable so the status rows never get pushed off-screen by
+            // the buttons below on a short landscape screen.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: PLSpacing.sm) {
+                        Text("PERMISSION REQUIRED")
+                            .plType(.sectionLabel)
+                            .foregroundStyle(PLColor.accentOnDark)
+                        Text("Camera access\nis off")
+                            .plType(.screenTitle)
+                            .foregroundStyle(PLColor.ink)
+                        Text("This app can't quick-capture plates without camera access. Location is optional — entries still save without it.")
+                            .plType(.body)
+                            .foregroundStyle(PLColor.inkSecondary)
+                    }
+                    .padding(PLSpacing.gutter)
 
-            VStack(spacing: 0) {
-                statusRow(label: "Camera", value: "DENIED", color: PLColor.accentOnDark)
-                statusRow(label: "Location", value: locationText.label, color: locationText.color)
+                    VStack(spacing: 0) {
+                        statusRow(label: "Camera", value: "DENIED", color: PLColor.accentOnDark)
+                        statusRow(label: "Location", value: locationText.label, color: locationText.color)
+                    }
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
+                    }
+                }
             }
-            .overlay(alignment: .top) {
-                Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
-            }
-
-            Spacer()
 
             VStack(spacing: 2) {
                 PLBlockButton("OPEN IOS SETTINGS", filled: true, action: onOpenSettings)

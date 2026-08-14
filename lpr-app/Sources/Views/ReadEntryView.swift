@@ -16,14 +16,29 @@ struct ReadEntryView: View {
     let onSave: (String, String) -> Void
     let onRetake: () -> Void
 
+    @State private var correctedText: String?
+    @State private var showCorrectionEditor = false
+
     private let tags = ["General", "BOLO", "Suspicious", "Parking Complaint", "Follow-up"]
 
     private var selectedCandidate: PlateOCRService.Candidate? {
         candidates.indices.contains(selectedIndex) ? candidates[selectedIndex] : nil
     }
 
+    /// What actually gets displayed and saved — a manual correction wins
+    /// over whatever OCR picked.
+    private var displayedText: String? {
+        correctedText ?? selectedCandidate?.text
+    }
+
     private var confidence: Float { selectedCandidate?.confidence ?? 0 }
-    private var isLowConfidence: Bool { !isManualEntry && confidence < 0.80 }
+    /// A human just verified this by typing it — no more OCR uncertainty.
+    private var effectiveConfidence: Float { correctedText != nil ? 1.0 : confidence }
+    private var isLowConfidence: Bool { correctedText == nil && !isManualEntry && confidence < 0.80 }
+    private var readLabel: String {
+        if correctedText != nil { return "CORRECTED" }
+        return isManualEntry ? "MANUAL ENTRY" : "ON-DEVICE OCR"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,6 +55,19 @@ struct ReadEntryView: View {
             actionRow
         }
         .background(PLColor.ground)
+        .fullScreenCover(isPresented: $showCorrectionEditor) {
+            ManualEntryView(
+                initialText: displayedText ?? "",
+                title: "CORRECT READ",
+                primaryLabel: "USE THIS",
+                primarySubLabel: nil,
+                onLog: { text in
+                    correctedText = text
+                    showCorrectionEditor = false
+                },
+                onCancel: { showCorrectionEditor = false }
+            )
+        }
     }
 
     private var capturedFrame: some View {
@@ -69,12 +97,22 @@ struct ReadEntryView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("READ").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
                 Spacer()
-                Text(isManualEntry ? "MANUAL ENTRY" : "ON-DEVICE OCR")
+                Button {
+                    showCorrectionEditor = true
+                } label: {
+                    Text("EDIT")
+                        .underline()
+                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.1))
+                        .foregroundStyle(PLColor.ink)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 10)
+                Text(readLabel)
                     .plType(PLTypeStyle(.bold, 10, trackingEm: 0.1))
                     .foregroundStyle(PLColor.accentOnDark)
             }
 
-            Text(selectedCandidate?.text ?? "—")
+            Text(displayedText ?? "—")
                 .plType(.plateDisplay)
                 .foregroundStyle(PLColor.ink)
                 .padding(.top, 6)
@@ -87,11 +125,11 @@ struct ReadEntryView: View {
                         Rectangle().fill(PLColor.surfaceAlt)
                         Rectangle()
                             .fill(PLColor.accentOnDark)
-                            .frame(width: geo.size.width * CGFloat(confidence))
+                            .frame(width: geo.size.width * CGFloat(effectiveConfidence))
                     }
                 }
                 .frame(height: 6)
-                Text("\(Int(confidence * 100))%")
+                Text("\(Int(effectiveConfidence * 100))%")
                     .plType(PLTypeStyle(.bold, 12))
                     .foregroundStyle(PLColor.ink)
             }
@@ -122,6 +160,7 @@ struct ReadEntryView: View {
                 let isSelected = index == selectedIndex
                 Button {
                     selectedIndex = index
+                    correctedText = nil
                 } label: {
                     HStack {
                         Text(candidate.text).plType(.candidate)
@@ -183,9 +222,9 @@ struct ReadEntryView: View {
             PLPrimaryButton(
                 "LOG PLATE",
                 subLabel: "GPS + TIMESTAMP ATTACHED",
-                isDisabled: selectedCandidate == nil
+                isDisabled: displayedText == nil
             ) {
-                if let text = selectedCandidate?.text {
+                if let text = displayedText {
                     onSave(text, selectedTag)
                 }
             }

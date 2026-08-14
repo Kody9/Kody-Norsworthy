@@ -43,7 +43,6 @@ struct CaptureView: View {
 
     @State private var zoomGestureBaseline: CGFloat = 1.0
     @State private var isAutoScanEnabled = false
-    @State private var isAutoScanCapture = false
     @State private var autoScanTask: Task<Void, Never>?
     @State private var recentAutoScanPlates: [String] = []
     @State private var pendingDetections: [PendingDetection] = []
@@ -92,7 +91,7 @@ struct CaptureView: View {
             stopAutoScan()
         }
         .onReceive(camera.$capturedImage.compactMap { $0 }) { image in
-            handleCaptured(image: image)
+            handleCaptured(image: image, isAuto: false)
         }
     }
 
@@ -109,10 +108,15 @@ struct CaptureView: View {
                 .ignoresSafeArea(edges: .top)
 
                 GeometryReader { geo in
-                    let width = geo.size.width - 96
-                    let height = width * 0.5
+                    // Based on the shorter screen dimension so the framing
+                    // box stays a sensible, plate-shaped size in landscape
+                    // too, instead of stretching edge-to-edge on the long
+                    // axis the way a naive geo.size.width-based box would.
+                    let shortSide = min(geo.size.width, geo.size.height)
+                    let width = min(geo.size.width - 96, shortSide * 1.4)
+                    let height = min(width * 0.5, geo.size.height - 120)
                     FramingBrackets()
-                        .frame(width: width, height: height)
+                        .frame(width: max(width, 0), height: max(height, 0))
                         .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 }
                 .ignoresSafeArea(edges: .top)
@@ -269,8 +273,7 @@ struct CaptureView: View {
         }
     }
 
-    private func capture(auto: Bool = false) {
-        isAutoScanCapture = auto
+    private func capture() {
         isReading = true
         locationService.requestOneShotLocation()
         camera.capturePhoto()
@@ -285,11 +288,13 @@ struct CaptureView: View {
         }
     }
 
-    /// Periodically captures and OCRs in the background so you don't have to
-    /// tap for each passing car. A confident, not-recently-seen plate goes
-    /// into `pendingDetections` — it does NOT interrupt what you're doing.
-    /// Review (and explicitly save or discard) happens later, in your own
-    /// time, via the REVIEW button. Nothing is ever saved without that step.
+    /// Periodically grabs a silent frame and OCRs it in the background, so
+    /// you don't have to tap for each passing car (and it doesn't click the
+    /// shutter every couple of seconds — see captureFrameSilently). A
+    /// confident, not-recently-seen plate goes into `pendingDetections`; it
+    /// does NOT interrupt what you're doing. Review (and explicitly save or
+    /// discard) happens later, via the REVIEW button. Nothing is ever saved
+    /// without that step.
     private func startAutoScan() {
         autoScanTask?.cancel()
         autoScanTask = Task {
@@ -297,7 +302,14 @@ struct CaptureView: View {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 guard !Task.isCancelled else { return }
                 guard isAutoScanEnabled, phase == .camera, !isReading, camera.isConfigured else { continue }
-                capture(auto: true)
+                isReading = true
+                camera.captureFrameSilently { image in
+                    guard let image else {
+                        isReading = false
+                        return
+                    }
+                    handleCaptured(image: image, isAuto: true)
+                }
             }
         }
     }
@@ -307,9 +319,7 @@ struct CaptureView: View {
         autoScanTask = nil
     }
 
-    private func handleCaptured(image: UIImage) {
-        let isAuto = isAutoScanCapture
-        isAutoScanCapture = false
+    private func handleCaptured(image: UIImage, isAuto: Bool) {
         PlateOCRService.recognizePlates(in: image) { result in
             DispatchQueue.main.async {
                 isReading = false

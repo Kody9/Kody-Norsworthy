@@ -11,35 +11,40 @@ struct NoPlateFoundView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ZStack {
-                if let image {
-                    Color.black
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .grayscale(1.0)
-                } else {
-                    PLColor.surface
+            // Scrollable — the photo + title + body alone can exceed a
+            // landscape iPhone's available height, which would otherwise
+            // clip the buttons below.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack {
+                        if let image {
+                            Color.black
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .grayscale(1.0)
+                        } else {
+                            PLColor.surface
+                        }
+                    }
+                    .frame(height: 200)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
+                    }
+
+                    VStack(alignment: .leading, spacing: PLSpacing.md) {
+                        Text("No plate\nfound")
+                            .plType(.screenTitle)
+                            .foregroundStyle(PLColor.ink)
+                        Text("The frame was too blurred to read. Nothing was saved. Reshoot, or type the plate — the photo and GPS are still attached either way.")
+                            .plType(.body)
+                            .foregroundStyle(PLColor.inkSecondary)
+                    }
+                    .padding(PLSpacing.gutter)
                 }
             }
-            .frame(height: 200)
-            .frame(maxWidth: .infinity)
-            .clipped()
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
-            }
-
-            VStack(alignment: .leading, spacing: PLSpacing.md) {
-                Text("No plate\nfound")
-                    .plType(.screenTitle)
-                    .foregroundStyle(PLColor.ink)
-                Text("The frame was too blurred to read. Nothing was saved. Reshoot, or type the plate — the photo and GPS are still attached either way.")
-                    .plType(.body)
-                    .foregroundStyle(PLColor.inkSecondary)
-            }
-            .padding(PLSpacing.gutter)
-
-            Spacer()
 
             VStack(spacing: 2) {
                 PLBlockButton("RESHOOT", filled: true, action: onReshoot)
