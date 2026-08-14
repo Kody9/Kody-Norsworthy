@@ -14,6 +14,17 @@ enum CapturePhase {
     case cameraDenied
 }
 
+/// A plate auto-scan found but hasn't been reviewed yet. Nothing here is
+/// saved — it only becomes a PlateEntry once a human looks at it on the
+/// Read screen and taps LOG PLATE, same as any other capture.
+private struct PendingDetection: Identifiable {
+    let id = UUID()
+    let candidates: [PlateOCRService.Candidate]
+    let image: UIImage?
+    let location: CLLocation?
+    let detectedState: String?
+}
+
 struct CaptureView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var camera = CameraController()
@@ -35,6 +46,7 @@ struct CaptureView: View {
     @State private var isAutoScanCapture = false
     @State private var autoScanTask: Task<Void, Never>?
     @State private var recentAutoScanPlates: [String] = []
+    @State private var pendingDetections: [PendingDetection] = []
 
     var body: some View {
         Group {
@@ -51,7 +63,7 @@ struct CaptureView: View {
                     detectedState: detectedState,
                     isManualEntry: isManualEntry,
                     onSave: saveEntry,
-                    onRetake: { resetToCamera() }
+                    onRetake: { advanceReviewOrReset() }
                 )
             case .saved:
                 SavedConfirmationView(plateText: savedPlateText)
@@ -112,7 +124,11 @@ struct CaptureView: View {
                 VStack {
                     HStack {
                         Spacer()
-                        autoScanToggle
+                        VStack(alignment: .trailing, spacing: 8) {
+                            autoScanToggle
+                            reviewQueueButton
+                        }
+                        .padding(PLSpacing.gutter)
                     }
                     Spacer()
                     HStack(alignment: .bottom) {
@@ -180,7 +196,24 @@ struct CaptureView: View {
                 .background(isAutoScanEnabled ? PLColor.accentOnDark : PLColor.surface.opacity(0.85))
         }
         .buttonStyle(.plain)
-        .padding(PLSpacing.gutter)
+    }
+
+    /// Only appears once auto-scan has queued something. Tapping it starts
+    /// reviewing the queue one plate at a time on the Read screen — nothing
+    /// in the queue is ever saved without going through that screen.
+    @ViewBuilder
+    private var reviewQueueButton: some View {
+        if !pendingDetections.isEmpty {
+            Button(action: startReviewingQueue) {
+                Text("REVIEW · \(pendingDetections.count)")
+                    .plType(PLTypeStyle(.heavy, 11, trackingEm: 0.08))
+                    .foregroundStyle(PLColor.ground)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(PLColor.ink)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var zoomControls: some View {
@@ -252,12 +285,11 @@ struct CaptureView: View {
         }
     }
 
-    /// Periodically captures and OCRs in the background so you can drive or
-    /// walk past plates without tapping for each one. Only interrupts with
-    /// the Read screen for a confident, not-recently-seen plate — misses and
-    /// repeat reads of the same still-parked car are silently discarded so
-    /// scanning doesn't stall. Every surfaced read still requires LOG PLATE
-    /// to actually save; nothing is logged automatically.
+    /// Periodically captures and OCRs in the background so you don't have to
+    /// tap for each passing car. A confident, not-recently-seen plate goes
+    /// into `pendingDetections` — it does NOT interrupt what you're doing.
+    /// Review (and explicitly save or discard) happens later, in your own
+    /// time, via the REVIEW button. Nothing is ever saved without that step.
     private func startAutoScan() {
         autoScanTask?.cancel()
         autoScanTask = Task {
@@ -294,14 +326,22 @@ struct CaptureView: View {
                     if recentAutoScanPlates.count > 8 {
                         recentAutoScanPlates.removeFirst()
                     }
+                    pendingDetections.append(PendingDetection(
+                        candidates: result.candidates,
+                        image: image,
+                        location: locationService.lastLocation,
+                        detectedState: result.detectedState
+                    ))
+                    if pendingDetections.count > 20 {
+                        pendingDetections.removeFirst()
+                    }
+                    return
                 }
 
                 capturedImage = image
                 capturedLocation = locationService.lastLocation
                 if result.candidates.isEmpty {
-                    if !isAuto {
-                        phase = .noPlateFound
-                    }
+                    phase = .noPlateFound
                 } else {
                     candidates = result.candidates
                     selectedIndex = 0
@@ -311,6 +351,30 @@ struct CaptureView: View {
                     phase = .read
                 }
             }
+        }
+    }
+
+    /// Pops the next queued detection into the Read screen for review.
+    private func startReviewingQueue() {
+        guard !pendingDetections.isEmpty else { return }
+        let next = pendingDetections.removeFirst()
+        candidates = next.candidates
+        selectedIndex = 0
+        selectedTag = "BOLO"
+        isManualEntry = false
+        capturedImage = next.image
+        capturedLocation = next.location
+        detectedState = next.detectedState
+        phase = .read
+    }
+
+    /// Called after saving or discarding a Read-screen entry: keeps working
+    /// through the queue if there's more, otherwise returns to the camera.
+    private func advanceReviewOrReset() {
+        if !pendingDetections.isEmpty {
+            startReviewingQueue()
+        } else {
+            resetToCamera()
         }
     }
 
@@ -340,7 +404,7 @@ struct CaptureView: View {
         phase = .saved
         Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            resetToCamera()
+            advanceReviewOrReset()
         }
     }
 
