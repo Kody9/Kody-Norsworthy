@@ -7,9 +7,14 @@ struct EntryDetailView: View {
     @Bindable var entry: PlateEntry
     let onBack: () -> Void
 
+    @Environment(\.modelContext) private var modelContext
+
     @State private var vinDecodeResult: NHTSAVinDecoder.Result?
     @State private var isDecoding = false
     @State private var decodeError: String?
+    @State private var shareURL: URL?
+    @State private var showShareSheet = false
+    @State private var showDeleteConfirmation = false
 
     private var displayState: String {
         entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
@@ -32,18 +37,60 @@ struct EntryDetailView: View {
             notAvailablePanel
         }
         .background(PLColor.ground)
+        .sheet(isPresented: $showShareSheet) {
+            if let shareURL {
+                ShareSheet(activityItems: [shareURL])
+            }
+        }
+        .alert("Delete This Entry?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive, action: deleteEntry)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes \(entry.plateNumber) from this device. This cannot be undone.")
+        }
     }
 
     private var backRow: some View {
-        Button(action: onBack) {
-            Text("‹ HISTORY")
-                .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
-                .foregroundStyle(PLColor.inkTertiary)
+        HStack {
+            Button(action: onBack) {
+                Text("‹ HISTORY")
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                    .foregroundStyle(PLColor.inkTertiary)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button(action: shareEntry) {
+                Text("SHARE")
+                    .underline()
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                    .foregroundStyle(PLColor.ink)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 16)
+            Button {
+                showDeleteConfirmation = true
+            } label: {
+                Text("DELETE")
+                    .underline()
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                    .foregroundStyle(PLColor.accentOnDark)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, PLSpacing.gutter)
         .padding(.top, 12)
         .padding(.bottom, 12)
+    }
+
+    private func shareEntry() {
+        guard let url = EntryShareExporter.makePDF(for: entry) else { return }
+        shareURL = url
+        showShareSheet = true
+    }
+
+    private func deleteEntry() {
+        modelContext.delete(entry)
+        onBack()
     }
 
     private var header: some View {
