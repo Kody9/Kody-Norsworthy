@@ -123,9 +123,10 @@ struct CaptureView: View {
         .fullScreenCover(isPresented: $showQueueList) {
             AutoScanQueueView(
                 detections: pendingDetections,
+                onQuickLog: quickLog,
                 onReview: beginReviewing,
                 onDiscard: { detection in pendingDetections.removeAll { $0.id == detection.id } },
-                onDone: { showQueueList = false }
+                onClose: { showQueueList = false }
             )
         }
     }
@@ -440,6 +441,25 @@ struct CaptureView: View {
             detectedState = result.detectedState
             phase = .read
         }
+    }
+
+    /// Logs a queued detection straight to history exactly as read — the
+    /// triage list's fast path for a thumbnail + reading that's obviously
+    /// right at a glance. Still a deliberate, per-plate human decision (the
+    /// DONE tap for that specific row), just made from the list instead of
+    /// the full Read screen; nothing here bypasses that.
+    private func quickLog(_ detection: PendingDetection) {
+        guard let text = detection.candidates.first?.text, !text.isEmpty else { return }
+        pendingDetections.removeAll { $0.id == detection.id }
+        let entry = PlateEntry(
+            plateNumber: text.uppercased(),
+            state: detection.detectedState ?? "Unknown",
+            latitude: detection.location?.coordinate.latitude,
+            longitude: detection.location?.coordinate.longitude,
+            tag: "BOLO",
+            photoData: detection.image?.jpegData(compressionQuality: 0.7)
+        )
+        modelContext.insert(entry)
     }
 
     /// Pulls one specific queued detection (picked from the triage list)

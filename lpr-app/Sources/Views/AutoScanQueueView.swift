@@ -2,15 +2,22 @@ import SwiftUI
 import UIKit
 
 /// Fast triage for everything auto-scan has queued up, instead of stepping
-/// through the full Read screen one at a time. REVIEW opens the normal Read
-/// screen for that one detection (LOG PLATE / correction / tags all still
-/// apply there) — nothing here ever saves on its own. DISCARD just drops it
-/// from the queue.
+/// through the full Read screen one at a time.
+///
+/// DONE logs that one detection immediately, exactly as read (top OCR
+/// candidate, BOLO tag, GPS + photo already attached) — for the common case
+/// where the thumbnail and reading are obviously correct at a glance. It's
+/// still a deliberate, per-plate human decision, just made from this list
+/// instead of the full screen; nothing is ever saved without this or
+/// REVIEW's LOG PLATE being tapped for that specific entry. REVIEW opens
+/// the full Read screen instead, for anything that needs a correction, a
+/// different tag, or a second look. DISCARD drops it without saving.
 struct AutoScanQueueView: View {
     let detections: [PendingDetection]
+    let onQuickLog: (PendingDetection) -> Void
     let onReview: (PendingDetection) -> Void
     let onDiscard: (PendingDetection) -> Void
-    let onDone: () -> Void
+    let onClose: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,7 +26,7 @@ struct AutoScanQueueView: View {
                     .plType(PLTypeStyle(.heavy, 13, trackingEm: 0.06))
                     .foregroundStyle(PLColor.accentOnDark)
                 Spacer()
-                Button("DONE", action: onDone)
+                Button("CLOSE", action: onClose)
                     .buttonStyle(.plain)
                     .plType(PLTypeStyle(.bold, 12, trackingEm: 0.06))
                     .foregroundStyle(PLColor.ink)
@@ -80,14 +87,26 @@ struct AutoScanQueueView: View {
 
             Spacer(minLength: PLSpacing.sm)
 
-            VStack(alignment: .trailing, spacing: 8) {
-                Button { onReview(detection) } label: {
-                    Text("REVIEW")
+            VStack(alignment: .trailing, spacing: 6) {
+                Button { onQuickLog(detection) } label: {
+                    Text("DONE")
                         .plType(PLTypeStyle(.bold, 11, trackingEm: 0.06))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(PLColor.accent)
+                }
+                .buttonStyle(.plain)
+                .disabled(detection.candidates.first == nil)
+                .opacity(detection.candidates.first == nil ? 0.4 : 1)
+
+                Button { onReview(detection) } label: {
+                    Text("REVIEW")
+                        .plType(PLTypeStyle(.bold, 11, trackingEm: 0.06))
+                        .foregroundStyle(PLColor.ink)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
                 }
                 .buttonStyle(.plain)
 
