@@ -20,11 +20,24 @@ struct ReadEntryView: View {
 
     @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var allEntries: [PlateEntry]
 
+    /// A single item-driven cover instead of three separate
+    /// `.fullScreenCover(isPresented:)` modifiers stacked on this view --
+    /// SwiftUI can cross-trigger independent Bool-driven covers on the same
+    /// view when one presentation follows closely behind another dismissing
+    /// (exactly what happens coming from the queue list's REVIEW), which
+    /// was opening the photo zoom instead of the correction editor. Only
+    /// one cover can ever be "the" active one this way.
+    private enum ActiveCover: Identifiable {
+        case correctionEditor
+        case statePicker
+        case zoomedPhoto
+
+        var id: Self { self }
+    }
+
     @State private var correctedText: String?
-    @State private var showCorrectionEditor = false
     @State private var correctedState: String?
-    @State private var showStatePicker = false
-    @State private var showZoomedPhoto = false
+    @State private var activeCover: ActiveCover?
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -95,40 +108,41 @@ struct ReadEntryView: View {
             actionRow
         }
         .background(PLColor.ground)
-        .fullScreenCover(isPresented: $showCorrectionEditor) {
-            ManualEntryView(
-                initialText: displayedText ?? "",
-                title: "CORRECT READ",
-                primaryLabel: "USE THIS",
-                primarySubLabel: nil,
-                image: image,
-                photoZoomState: photoZoomState,
-                onLog: { text in
-                    correctedText = text
-                    showCorrectionEditor = false
-                },
-                onCancel: { showCorrectionEditor = false }
-            )
-        }
-        .fullScreenCover(isPresented: $showStatePicker) {
-            StatePickerView(
-                onSelect: { state in
-                    correctedState = state
-                    showStatePicker = false
-                },
-                onCancel: { showStatePicker = false }
-            )
-        }
-        .fullScreenCover(isPresented: $showZoomedPhoto) {
-            if let image {
-                PhotoZoomView(image: image, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
+        .fullScreenCover(item: $activeCover) { cover in
+            switch cover {
+            case .correctionEditor:
+                ManualEntryView(
+                    initialText: displayedText ?? "",
+                    title: "CORRECT READ",
+                    primaryLabel: "USE THIS",
+                    primarySubLabel: nil,
+                    image: image,
+                    photoZoomState: photoZoomState,
+                    onLog: { text in
+                        correctedText = text
+                        activeCover = nil
+                    },
+                    onCancel: { activeCover = nil }
+                )
+            case .statePicker:
+                StatePickerView(
+                    onSelect: { state in
+                        correctedState = state
+                        activeCover = nil
+                    },
+                    onCancel: { activeCover = nil }
+                )
+            case .zoomedPhoto:
+                if let image {
+                    PhotoZoomView(image: image, zoomState: photoZoomState, onDone: { activeCover = nil })
+                }
             }
         }
     }
 
     private var capturedFrame: some View {
         Button {
-            if image != nil { showZoomedPhoto = true }
+            if image != nil { activeCover = .zoomedPhoto }
         } label: {
             ZStack(alignment: .bottomLeading) {
                 if let previewImage {
@@ -235,7 +249,7 @@ struct ReadEntryView: View {
     /// (a live capture, a queued auto-scan detection, or manual entry).
     private var manualOverrideButton: some View {
         Button {
-            showCorrectionEditor = true
+            activeCover = .correctionEditor
         } label: {
             HStack {
                 Text("NOT RIGHT? TYPE THE PLATE")
@@ -288,7 +302,7 @@ struct ReadEntryView: View {
                 Text("TAG").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
                 Spacer()
                 Button {
-                    showStatePicker = true
+                    activeCover = .statePicker
                 } label: {
                     Text(locationLabel)
                         .underline()
