@@ -16,6 +16,15 @@ struct EntryDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showZoomedPhoto = false
     @StateObject private var photoZoomState = PhotoZoomState()
+    /// Decoded once per entry rather than inline in `photo`/the zoom cover
+    /// -- `UIImage(data:)` produces a new object identity every call, and
+    /// `ZoomingScrollView` tracks the current image by reference. Since the
+    /// zoom cover's body re-evaluates continuously while pinching (it
+    /// observes `photoZoomState`, which publishes on every zoom/pan
+    /// update), decoding inline there fed the zoomer a "new" image
+    /// mid-gesture on every single frame, which reset and corrupted its
+    /// zoom state -- the reported "zoomed in and won't let me zoom out" bug.
+    @State private var photoImage: UIImage?
 
     private var displayState: String {
         entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
@@ -48,9 +57,13 @@ struct EntryDetailView: View {
             Text("This permanently deletes \(entry.plateNumber) from this device. This cannot be undone.")
         }
         .fullScreenCover(isPresented: $showZoomedPhoto) {
-            if let data = entry.photoData, let uiImage = UIImage(data: data) {
-                PhotoZoomView(image: uiImage, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
+            if let photoImage {
+                PhotoZoomView(image: photoImage, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
             }
+        }
+        .task(id: entry.id) {
+            photoImage = entry.photoData.flatMap(UIImage.init(data:))
+            photoZoomState.reset()
         }
     }
 
@@ -112,9 +125,9 @@ struct EntryDetailView: View {
             showZoomedPhoto = true
         } label: {
             Group {
-                if let data = entry.photoData, let uiImage = UIImage(data: data) {
+                if let photoImage {
                     ZStack(alignment: .bottomTrailing) {
-                        Image(uiImage: uiImage)
+                        Image(uiImage: photoImage)
                             .resizable()
                             .scaledToFit()
                             .grayscale(1.0)
@@ -134,7 +147,7 @@ struct EntryDetailView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(entry.photoData == nil)
+        .disabled(photoImage == nil)
         .frame(maxHeight: 220)
         .clipped()
     }
