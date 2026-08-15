@@ -48,8 +48,16 @@ struct ManualEntryView: View {
     }
 
     private let characterLimit = 8
-    private let keys = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 6)
+    /// Standard QWERTY layout (digit row on top, like a physical keyboard)
+    /// instead of an alphabetical grid -- muscle memory carries over.
+    private let keyboardRows: [[Character]] = [
+        Array("1234567890"),
+        Array("QWERTYUIOP"),
+        Array("ASDFGHJKL"),
+        Array("ZXCVBNM")
+    ]
+    private let keyRowHeight: CGFloat = 52
+    private let keySpacing: CGFloat = 4
 
     var body: some View {
         VStack(spacing: 0) {
@@ -93,23 +101,32 @@ struct ManualEntryView: View {
                         Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
                     }
 
-                    LazyVGrid(columns: columns, spacing: 2) {
-                        ForEach(keys, id: \.self) { key in
-                            Button {
-                                if text.count < characterLimit {
-                                    text.append(key)
+                    GeometryReader { geo in
+                        let keyWidth = (geo.size.width - keySpacing * 9) / 10
+                        VStack(spacing: keySpacing) {
+                            ForEach(keyboardRows.indices, id: \.self) { rowIndex in
+                                HStack(spacing: keySpacing) {
+                                    Spacer(minLength: 0)
+                                    ForEach(keyboardRows[rowIndex], id: \.self) { key in
+                                        Button {
+                                            if text.count < characterLimit {
+                                                text.append(key)
+                                            }
+                                        } label: {
+                                            Text(String(key))
+                                                .plType(PLTypeStyle(.heavy, 20))
+                                                .foregroundStyle(PLColor.ink)
+                                                .frame(width: keyWidth, height: keyRowHeight)
+                                                .background(PLColor.surface)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    Spacer(minLength: 0)
                                 }
-                            } label: {
-                                Text(String(key))
-                                    .plType(PLTypeStyle(.heavy, 20))
-                                    .foregroundStyle(PLColor.ink)
-                                    .frame(height: 56)
-                                    .frame(maxWidth: .infinity)
-                                    .background(PLColor.surface)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
+                    .frame(height: keyRowHeight * 4 + keySpacing * 3)
                     .padding(.horizontal, PLSpacing.gutter)
                     .padding(.top, PLSpacing.gutter)
                     .padding(.bottom, PLSpacing.sm)
