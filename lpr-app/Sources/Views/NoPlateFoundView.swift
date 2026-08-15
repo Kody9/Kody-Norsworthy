@@ -6,10 +6,18 @@ import UIKit
 /// or types the plate.
 struct NoPlateFoundView: View {
     let image: UIImage?
+    @ObservedObject var photoZoomState: PhotoZoomState
     let onReshoot: () -> Void
     let onTypeIt: () -> Void
 
     @State private var showZoomedPhoto = false
+
+    /// Once zoomed in on this photo, keep showing that same crop here too.
+    private var previewImage: UIImage? {
+        guard let image else { return nil }
+        guard let rect = photoZoomState.normalizedVisibleRect else { return image }
+        return image.cropped(toNormalizedRect: rect) ?? image
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -22,9 +30,9 @@ struct NoPlateFoundView: View {
                         if image != nil { showZoomedPhoto = true }
                     } label: {
                         ZStack(alignment: .bottomTrailing) {
-                            if let image {
+                            if let previewImage {
                                 Color.black
-                                Image(uiImage: image)
+                                Image(uiImage: previewImage)
                                     .resizable()
                                     .scaledToFit()
                                     .grayscale(1.0)
@@ -71,7 +79,7 @@ struct NoPlateFoundView: View {
         .background(PLColor.ground)
         .fullScreenCover(isPresented: $showZoomedPhoto) {
             if let image {
-                PhotoZoomView(image: image, onDone: { showZoomedPhoto = false })
+                PhotoZoomView(image: image, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
             }
         }
     }

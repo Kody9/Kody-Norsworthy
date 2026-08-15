@@ -41,6 +41,7 @@ struct CaptureView: View {
     @State private var capturedLocation: CLLocation?
     @State private var detectedState: String?
     @State private var savedPlateText = ""
+    @StateObject private var photoZoomState = PhotoZoomState()
 
     @State private var previewSize: CGSize = .zero
     @State private var zoomGestureBaseline: CGFloat = 1.0
@@ -73,6 +74,7 @@ struct CaptureView: View {
                     location: capturedLocation,
                     detectedState: detectedState,
                     isManualEntry: isManualEntry,
+                    photoZoomState: photoZoomState,
                     onSave: saveEntry,
                     onRetake: { advanceReviewOrReset() }
                 )
@@ -81,12 +83,14 @@ struct CaptureView: View {
             case .manualEntry:
                 ManualEntryView(
                     image: capturedImage,
+                    photoZoomState: photoZoomState,
                     onLog: { text in beginRead(withManualText: text) },
                     onCancel: { phase = .camera }
                 )
             case .noPlateFound:
                 NoPlateFoundView(
                     image: capturedImage,
+                    photoZoomState: photoZoomState,
                     onReshoot: { resetToCamera() },
                     onTypeIt: { phase = .manualEntry }
                 )
@@ -398,6 +402,7 @@ struct CaptureView: View {
 
         capturedImage = image
         capturedLocation = locationService.lastLocation
+        photoZoomState.reset()
         if result.candidates.isEmpty {
             phase = .noPlateFound
         } else {
@@ -420,6 +425,7 @@ struct CaptureView: View {
         isManualEntry = false
         capturedImage = next.image
         capturedLocation = next.location
+        photoZoomState.reset()
         detectedState = next.detectedState
         phase = .read
     }
@@ -477,6 +483,7 @@ struct CaptureView: View {
         isManualEntry = false
         capturedImage = nil
         capturedLocation = nil
+        photoZoomState.reset()
         detectedState = nil
         phase = .camera
     }

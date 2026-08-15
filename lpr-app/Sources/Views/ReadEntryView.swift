@@ -13,6 +13,7 @@ struct ReadEntryView: View {
     let location: CLLocation?
     let detectedState: String?
     let isManualEntry: Bool
+    @ObservedObject var photoZoomState: PhotoZoomState
     let onSave: (String, String, String) -> Void
     let onRetake: () -> Void
 
@@ -48,6 +49,15 @@ struct ReadEntryView: View {
         correctedState ?? detectedState ?? "Unknown"
     }
 
+    /// Once zoomed in on this photo (here or from the correction editor),
+    /// show that same zoomed-in crop in the strip instead of the full
+    /// un-zoomed frame — no need to re-zoom just to keep looking at it.
+    private var previewImage: UIImage? {
+        guard let image else { return nil }
+        guard let rect = photoZoomState.normalizedVisibleRect else { return image }
+        return image.cropped(toNormalizedRect: rect) ?? image
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -70,6 +80,7 @@ struct ReadEntryView: View {
                 primaryLabel: "USE THIS",
                 primarySubLabel: nil,
                 image: image,
+                photoZoomState: photoZoomState,
                 onLog: { text in
                     correctedText = text
                     showCorrectionEditor = false
@@ -88,7 +99,7 @@ struct ReadEntryView: View {
         }
         .fullScreenCover(isPresented: $showZoomedPhoto) {
             if let image {
-                PhotoZoomView(image: image, onDone: { showZoomedPhoto = false })
+                PhotoZoomView(image: image, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
             }
         }
     }
@@ -98,9 +109,9 @@ struct ReadEntryView: View {
             if image != nil { showZoomedPhoto = true }
         } label: {
             ZStack(alignment: .bottomLeading) {
-                if let image {
+                if let previewImage {
                     Color.black
-                    Image(uiImage: image)
+                    Image(uiImage: previewImage)
                         .resizable()
                         .scaledToFit()
                         .grayscale(1.0)

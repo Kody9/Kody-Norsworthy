@@ -15,6 +15,7 @@ struct EntryDetailView: View {
     @State private var shareFile: ShareableFile?
     @State private var showDeleteConfirmation = false
     @State private var showZoomedPhoto = false
+    @StateObject private var photoZoomState = PhotoZoomState()
 
     private var displayState: String {
         entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
@@ -48,7 +49,7 @@ struct EntryDetailView: View {
         }
         .fullScreenCover(isPresented: $showZoomedPhoto) {
             if let data = entry.photoData, let uiImage = UIImage(data: data) {
-                PhotoZoomView(image: uiImage, onDone: { showZoomedPhoto = false })
+                PhotoZoomView(image: uiImage, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
             }
         }
     }

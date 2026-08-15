@@ -18,6 +18,11 @@ struct ManualEntryView: View {
     let onLog: (String) -> Void
     let onCancel: () -> Void
 
+    /// Shared with wherever this screen was opened from, so a crop already
+    /// zoomed into (here or on the Read screen) shows up in `photoReference`
+    /// too instead of resetting back to the full photo.
+    @ObservedObject var photoZoomState: PhotoZoomState
+
     @State private var text: String
     @State private var showZoomedPhoto = false
 
@@ -27,6 +32,7 @@ struct ManualEntryView: View {
         primaryLabel: String = "LOG PLATE",
         primarySubLabel: String? = "GPS + TIMESTAMP ATTACHED",
         image: UIImage? = nil,
+        photoZoomState: PhotoZoomState = PhotoZoomState(),
         onLog: @escaping (String) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -35,6 +41,7 @@ struct ManualEntryView: View {
         self.primaryLabel = primaryLabel
         self.primarySubLabel = primarySubLabel
         self.image = image
+        self.photoZoomState = photoZoomState
         self.onLog = onLog
         self.onCancel = onCancel
         _text = State(initialValue: initialText.uppercased())
@@ -156,20 +163,27 @@ struct ManualEntryView: View {
         .background(PLColor.groundNight)
         .fullScreenCover(isPresented: $showZoomedPhoto) {
             if let image {
-                PhotoZoomView(image: image, onDone: { showZoomedPhoto = false })
+                PhotoZoomView(image: image, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
             }
         }
     }
 
+    /// Once zoomed in on this photo, keep showing that same crop here too.
+    private var previewImage: UIImage? {
+        guard let image else { return nil }
+        guard let rect = photoZoomState.normalizedVisibleRect else { return image }
+        return image.cropped(toNormalizedRect: rect) ?? image
+    }
+
     @ViewBuilder
     private var photoReference: some View {
-        if let image {
+        if let previewImage {
             Button {
                 showZoomedPhoto = true
             } label: {
                 ZStack(alignment: .bottomTrailing) {
                     Color.black
-                    Image(uiImage: image)
+                    Image(uiImage: previewImage)
                         .resizable()
                         .scaledToFit()
                         .grayscale(1.0)
