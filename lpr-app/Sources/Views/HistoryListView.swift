@@ -77,6 +77,9 @@ struct HistoryListView: View {
     @State private var selectedEntry: PlateEntry?
     @State private var shareFile: ShareableFile?
     @State private var entryPendingDeletion: PlateEntry?
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var showBulkDeleteConfirmation = false
 
     /// Tag filter, date scope, and search applied — not yet sorted. The
     /// @Query itself is already newest-first, which `sortedFiltered` relies
@@ -120,6 +123,10 @@ struct HistoryListView: View {
         return order.map { day in
             DaySection(id: day, label: dayLabel(for: day), entries: groups[day] ?? [])
         }
+    }
+
+    private var selectedEntriesList: [PlateEntry] {
+        sortedFiltered.filter { selectedIDs.contains($0.id) }
     }
 
     private func dayLabel(for day: Date) -> String {
@@ -172,6 +179,19 @@ struct HistoryListView: View {
         } message: { entry in
             Text("This permanently deletes \(entry.plateNumber) from this device. This cannot be undone.")
         }
+        .alert(
+            "Delete \(selectedIDs.count) Entries?",
+            isPresented: $showBulkDeleteConfirmation
+        ) {
+            Button("Delete", role: .destructive, action: deleteSelected)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the selected entries from this device. This cannot be undone.")
+        }
+        .onChange(of: filter) { _, newValue in
+            // The map view has no selection UI of its own.
+            if newValue == .map { endSelecting() }
+        }
     }
 
     private var listView: some View {
@@ -181,15 +201,32 @@ struct HistoryListView: View {
                     .plType(.screenTitle)
                     .foregroundStyle(PLColor.ink)
                 Spacer()
-                Button(action: exportFiltered) {
-                    Text("EXPORT")
-                        .underline()
+                if isSelecting {
+                    Button("CANCEL", action: endSelecting)
+                        .buttonStyle(.plain)
                         .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
                         .foregroundStyle(PLColor.ink)
+                } else {
+                    Button(action: exportFiltered) {
+                        Text("EXPORT")
+                            .underline()
+                            .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                            .foregroundStyle(PLColor.ink)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(filtered.isEmpty)
+                    .opacity(filtered.isEmpty ? 0.4 : 1)
+
+                    if filter != .map {
+                        Button("SELECT") { isSelecting = true }
+                            .buttonStyle(.plain)
+                            .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                            .foregroundStyle(PLColor.ink)
+                            .padding(.leading, 16)
+                            .disabled(filtered.isEmpty)
+                            .opacity(filtered.isEmpty ? 0.4 : 1)
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(filtered.isEmpty)
-                .opacity(filtered.isEmpty ? 0.4 : 1)
             }
             .padding(.horizontal, PLSpacing.gutter)
             .padding(.bottom, 14)
@@ -257,8 +294,57 @@ struct HistoryListView: View {
                         }
                     }
                 }
+                if isSelecting {
+                    selectionActionBar
+                }
             }
         }
+    }
+
+    private var selectionActionBar: some View {
+        HStack(spacing: 2) {
+            Button {
+                if selectedIDs.count == sortedFiltered.count {
+                    selectedIDs = []
+                } else {
+                    selectedIDs = Set(sortedFiltered.map(\.id))
+                }
+            } label: {
+                Text(!sortedFiltered.isEmpty && selectedIDs.count == sortedFiltered.count ? "NONE" : "ALL")
+                    .plType(PLTypeStyle(.bold, 13, trackingEm: 0.04))
+                    .foregroundStyle(PLColor.ink)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                exportEntries(selectedEntriesList, label: "\(selectedIDs.count) Selected")
+            } label: {
+                Text("EXPORT · \(selectedIDs.count)")
+                    .plType(PLTypeStyle(.bold, 13, trackingEm: 0.04))
+                    .foregroundStyle(PLColor.ink)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedIDs.isEmpty)
+            .opacity(selectedIDs.isEmpty ? 0.4 : 1)
+
+            Button {
+                showBulkDeleteConfirmation = true
+            } label: {
+                Text("DELETE · \(selectedIDs.count)")
+                    .plType(PLTypeStyle(.bold, 13, trackingEm: 0.04))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(PLColor.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedIDs.isEmpty)
+            .opacity(selectedIDs.isEmpty ? 0.4 : 1)
+        }
+        .padding(PLSpacing.gutter)
     }
 
     private var dateScopeMenu: some View {
@@ -375,15 +461,45 @@ struct HistoryListView: View {
         EntryRow(
             entry: entry,
             repeatCount: repeatCount(for: entry),
+            isSelecting: isSelecting,
+            isSelected: selectedIDs.contains(entry.id),
             onDelete: { entryPendingDeletion = entry }
         )
         .contentShape(Rectangle())
-        .onTapGesture { selectedEntry = entry }
-        .swipeActions {
-            Button(role: .destructive) { delete(entry) } label: {
-                Label("Delete", systemImage: "trash")
+        .onTapGesture {
+            if isSelecting {
+                toggleSelection(entry)
+            } else {
+                selectedEntry = entry
             }
         }
+        .swipeActions {
+            if !isSelecting {
+                Button(role: .destructive) { delete(entry) } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    private func toggleSelection(_ entry: PlateEntry) {
+        if selectedIDs.contains(entry.id) {
+            selectedIDs.remove(entry.id)
+        } else {
+            selectedIDs.insert(entry.id)
+        }
+    }
+
+    private func endSelecting() {
+        isSelecting = false
+        selectedIDs = []
+    }
+
+    private func deleteSelected() {
+        for entry in selectedEntriesList {
+            modelContext.delete(entry)
+        }
+        endSelecting()
     }
 
     private func repeatCount(for entry: PlateEntry) -> Int {
@@ -410,6 +526,8 @@ struct HistoryListView: View {
 private struct EntryRow: View {
     let entry: PlateEntry
     let repeatCount: Int
+    let isSelecting: Bool
+    let isSelected: Bool
     let onDelete: () -> Void
 
     private var meta: String {
@@ -421,6 +539,13 @@ private struct EntryRow: View {
 
     var body: some View {
         HStack(spacing: PLSpacing.md) {
+            if isSelecting {
+                Rectangle()
+                    .fill(isSelected ? PLColor.accentOnDark : Color.clear)
+                    .frame(width: 22, height: 22)
+                    .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
+            }
+
             Group {
                 if let data = entry.photoData, let uiImage = UIImage(data: data) {
                     Image(uiImage: uiImage)
@@ -443,14 +568,16 @@ private struct EntryRow: View {
                 .plType(PLTypeStyle(.bold, 11, trackingEm: 0.04))
                 .foregroundStyle(entry.tag == "BOLO" ? PLColor.accentOnDark : PLColor.inkTertiary)
 
-            Button(action: onDelete) {
-                Text("DELETE")
-                    .underline()
-                    .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
-                    .foregroundStyle(PLColor.inkTertiary)
+            if !isSelecting {
+                Button(action: onDelete) {
+                    Text("DELETE")
+                        .underline()
+                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
+                        .foregroundStyle(PLColor.inkTertiary)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
             }
-            .buttonStyle(.plain)
-            .padding(.leading, 4)
         }
         .padding(.vertical, 14)
         .padding(.horizontal, PLSpacing.gutter)
