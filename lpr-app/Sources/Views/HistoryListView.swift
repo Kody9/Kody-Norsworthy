@@ -15,6 +15,7 @@ struct HistoryListView: View {
     @State private var searchText = ""
     @State private var filter: HistoryFilter = .all
     @State private var selectedEntry: PlateEntry?
+    @State private var shareFile: ShareableFile?
 
     private var filtered: [PlateEntry] {
         var result = entries
@@ -41,16 +42,30 @@ struct HistoryListView: View {
             }
         }
         .background(PLColor.ground)
+        .sheet(item: $shareFile) { file in
+            ShareSheet(activityItems: [file.url])
+        }
     }
 
     private var listView: some View {
         VStack(spacing: 0) {
-            Text("History")
-                .plType(.screenTitle)
-                .foregroundStyle(PLColor.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, PLSpacing.gutter)
-                .padding(.bottom, 14)
+            HStack(alignment: .firstTextBaseline) {
+                Text("History")
+                    .plType(.screenTitle)
+                    .foregroundStyle(PLColor.ink)
+                Spacer()
+                Button(action: exportFiltered) {
+                    Text("EXPORT")
+                        .underline()
+                        .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                        .foregroundStyle(PLColor.ink)
+                }
+                .buttonStyle(.plain)
+                .disabled(filtered.isEmpty)
+                .opacity(filtered.isEmpty ? 0.4 : 1)
+            }
+            .padding(.horizontal, PLSpacing.gutter)
+            .padding(.bottom, 14)
 
             TextField("", text: $searchText, prompt: Text("Search plate, tag, notes").foregroundStyle(PLColor.inkTertiary))
                 .plType(PLTypeStyle(.medium, 14))
@@ -122,6 +137,13 @@ struct HistoryListView: View {
 
     private func delete(_ entry: PlateEntry) {
         modelContext.delete(entry)
+    }
+
+    /// Exports whatever's currently on screen — the active tag filter and
+    /// search text both narrow this, same as the visible list — as CSV.
+    private func exportFiltered() {
+        guard let url = CSVExporter.export(filtered) else { return }
+        shareFile = ShareableFile(url: url)
     }
 }
 

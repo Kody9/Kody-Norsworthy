@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("hasAcceptedDisclaimer") private var hasAcceptedDisclaimer = true
     @AppStorage("retentionDays") private var retentionDays = 30
+    @AppStorage("autoScanFastMode") private var autoScanFastMode = true
 
     @State private var shareFile: ShareableFile?
     @State private var showClearConfirmation = false
@@ -51,6 +52,27 @@ struct SettingsView: View {
                     }
                 }
                 Text("Entries older than the chosen window are deleted from this phone automatically on launch — DPPA hygiene by default, not by discipline.")
+                    .plType(.body)
+                    .foregroundStyle(PLColor.inkTertiary)
+                    .padding(.horizontal, PLSpacing.gutter)
+                    .padding(.top, 8)
+                    .padding(.bottom, PLSpacing.gutter)
+
+                sectionLabel("AUTO-SCAN")
+                row {
+                    HStack {
+                        Text("Mode").plType(.rowLabel).foregroundStyle(PLColor.inkSecondary)
+                        Spacer()
+                        Picker("", selection: $autoScanFastMode) {
+                            Text("Fast").tag(true)
+                            Text("Accurate").tag(false)
+                        }
+                        .tint(PLColor.accentOnDark)
+                    }
+                }
+                Text(autoScanFastMode
+                    ? "Trusts a single frame's read immediately — catches more cars, including fast-moving ones, at the cost of more wrong reads to correct."
+                    : "Waits for the same reading twice within a few seconds before queuing it — fewer wrong reads, but a car only in frame briefly may not get caught at all.")
                     .plType(.body)
                     .foregroundStyle(PLColor.inkTertiary)
                     .padding(.horizontal, PLSpacing.gutter)

@@ -185,8 +185,9 @@ struct ManualEntryView: View {
                     Color.black
                     Image(uiImage: previewImage)
                         .resizable()
-                        .scaledToFit()
+                        .scaledToFill()
                         .grayscale(1.0)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     Text("TAP TO ZOOM")
                         .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
                         .foregroundStyle(PLColor.ink)

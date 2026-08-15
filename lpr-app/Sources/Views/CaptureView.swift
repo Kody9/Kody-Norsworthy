@@ -18,7 +18,7 @@ enum CapturePhase {
 /// A plate auto-scan found but hasn't been reviewed yet. Nothing here is
 /// saved — it only becomes a PlateEntry once a human looks at it on the
 /// Read screen and taps LOG PLATE, same as any other capture.
-private struct PendingDetection: Identifiable {
+struct PendingDetection: Identifiable {
     let id = UUID()
     let candidates: [PlateOCRService.Candidate]
     let image: UIImage?
@@ -47,18 +47,28 @@ struct CaptureView: View {
     @State private var zoomGestureBaseline: CGFloat = 1.0
     @State private var isAutoScanEnabled = false
     @State private var autoScanTask: Task<Void, Never>?
+    @State private var showQueueList = false
     /// Plate text -> when it was last queued. Suppresses re-queuing the same
     /// still-parked car on every 2s tick while scanning past it, without
     /// permanently blocking that plate for the rest of the session.
     @State private var recentAutoScanPlates: [String: Date] = [:]
+    /// Plate text -> timestamps of recent (not-yet-queued) sightings, used
+    /// only in ACCURATE mode -- see `autoScanFastMode`.
+    @State private var recentSightings: [String: [Date]] = [:]
     @State private var pendingDetections: [PendingDetection] = []
     private let autoScanDedupWindow: TimeInterval = 60
-    /// Trusting a single frame's read (rather than requiring the same text
-    /// to repeat) so a car that's only in frame for a moment still gets
-    /// queued -- catching it wrong and correcting it on the Read screen
-    /// beats not catching it at all. Confidence floor stays low for the
-    /// same reason; it's just enough to skip pure noise.
-    private let autoScanConfidenceThreshold: Float = 0.4
+    private let autoScanConsensusCount = 2
+    private let autoScanConsensusWindow: TimeInterval = 3
+    /// FAST trusts a single frame immediately (low confidence floor, `.fast`
+    /// recognizer) so a car only in frame briefly still gets queued, at the
+    /// cost of more wrong reads to correct. ACCURATE requires the same
+    /// reading twice within `autoScanConsensusWindow` seconds and uses the
+    /// slower, more careful recognizer -- fewer wrong reads, but a fast
+    /// pass-by may not get caught at all. Set from Setup; which one is
+    /// actually better depends on whether the phone is parked and watching
+    /// or scanning while moving, so it's a toggle rather than a fixed choice.
+    @AppStorage("autoScanFastMode") private var autoScanFastMode = true
+    private var autoScanConfidenceThreshold: Float { autoScanFastMode ? 0.4 : 0.6 }
 
     var body: some View {
         Group {
@@ -109,6 +119,14 @@ struct CaptureView: View {
         }
         .onReceive(camera.$capturedImage.compactMap { $0 }) { image in
             Task { await handleCaptured(image: image, isAuto: false) }
+        }
+        .fullScreenCover(isPresented: $showQueueList) {
+            AutoScanQueueView(
+                detections: pendingDetections,
+                onReview: beginReviewing,
+                onDiscard: { detection in pendingDetections.removeAll { $0.id == detection.id } },
+                onDone: { showQueueList = false }
+            )
         }
     }
 
@@ -215,13 +233,13 @@ struct CaptureView: View {
         .buttonStyle(.plain)
     }
 
-    /// Only appears once auto-scan has queued something. Tapping it starts
-    /// reviewing the queue one plate at a time on the Read screen — nothing
-    /// in the queue is ever saved without going through that screen.
+    /// Only appears once auto-scan has queued something. Tapping it opens a
+    /// scrollable triage list of everything queued — nothing in it is ever
+    /// saved without going through the Read screen.
     @ViewBuilder
     private var reviewQueueButton: some View {
         if !pendingDetections.isEmpty {
-            Button(action: startReviewingQueue) {
+            Button { showQueueList = true } label: {
                 Text("REVIEW · \(pendingDetections.count)")
                     .plType(PLTypeStyle(.heavy, 11, trackingEm: 0.08))
                     .foregroundStyle(PLColor.ground)
@@ -362,11 +380,10 @@ struct CaptureView: View {
             ocrInput = image
         }
 
-        // `.fast` for auto-scan -- every extra millisecond per frame is a
-        // frame a quickly-passing vehicle might not get a second chance at.
-        // Manual captures (READ PLATE) aren't time-pressured the same way,
-        // so they still get `.accurate`.
-        let recognitionLevel: VNRequestTextRecognitionLevel = isAuto ? .fast : .accurate
+        // Manual captures (READ PLATE) aren't time-pressured, so they always
+        // get `.accurate`; auto-scan's recognizer depends on the FAST/
+        // ACCURATE mode chosen in Setup (`autoScanFastMode`).
+        let recognitionLevel: VNRequestTextRecognitionLevel = (isAuto && autoScanFastMode) ? .fast : .accurate
         let result = await withCheckedContinuation { continuation in
             PlateOCRService.recognizePlates(in: ocrInput, recognitionLevel: recognitionLevel) { result in
                 continuation.resume(returning: result)
@@ -383,6 +400,16 @@ struct CaptureView: View {
             else {
                 return
             }
+
+            if !autoScanFastMode {
+                var sightings = (recentSightings[best.text] ?? []).filter { now.timeIntervalSince($0) < autoScanConsensusWindow }
+                sightings.append(now)
+                recentSightings[best.text] = sightings
+                recentSightings = recentSightings.filter { !$0.value.isEmpty }
+                guard sightings.count >= autoScanConsensusCount else { return }
+                recentSightings[best.text] = nil
+            }
+
             if let lastSeen = recentAutoScanPlates[best.text], now.timeIntervalSince(lastSeen) < autoScanDedupWindow {
                 return
             }
@@ -415,28 +442,28 @@ struct CaptureView: View {
         }
     }
 
-    /// Pops the next queued detection into the Read screen for review.
-    private func startReviewingQueue() {
-        guard !pendingDetections.isEmpty else { return }
-        let next = pendingDetections.removeFirst()
-        candidates = next.candidates
+    /// Pulls one specific queued detection (picked from the triage list)
+    /// into the Read screen for review.
+    private func beginReviewing(_ detection: PendingDetection) {
+        pendingDetections.removeAll { $0.id == detection.id }
+        candidates = detection.candidates
         selectedIndex = 0
         selectedTag = "BOLO"
         isManualEntry = false
-        capturedImage = next.image
-        capturedLocation = next.location
+        capturedImage = detection.image
+        capturedLocation = detection.location
         photoZoomState.reset()
-        detectedState = next.detectedState
+        detectedState = detection.detectedState
+        showQueueList = false
         phase = .read
     }
 
-    /// Called after saving or discarding a Read-screen entry: keeps working
-    /// through the queue if there's more, otherwise returns to the camera.
+    /// Called after saving or discarding a Read-screen entry: back to the
+    /// triage list if there's more queued, otherwise back to the camera.
     private func advanceReviewOrReset() {
+        resetToCamera()
         if !pendingDetections.isEmpty {
-            startReviewingQueue()
-        } else {
-            resetToCamera()
+            showQueueList = true
         }
     }
 

@@ -1,4 +1,5 @@
 import CoreLocation
+import SwiftData
 import SwiftUI
 import UIKit
 
@@ -17,11 +18,19 @@ struct ReadEntryView: View {
     let onSave: (String, String, String) -> Void
     let onRetake: () -> Void
 
+    @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var allEntries: [PlateEntry]
+
     @State private var correctedText: String?
     @State private var showCorrectionEditor = false
     @State private var correctedState: String?
     @State private var showStatePicker = false
     @State private var showZoomedPhoto = false
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
 
     private let tags = ["General", "BOLO", "Suspicious", "Parking Complaint", "Follow-up"]
 
@@ -47,6 +56,19 @@ struct ReadEntryView: View {
     /// A manual pick wins over whatever (if anything) auto-detection found.
     private var displayedState: String {
         correctedState ?? detectedState ?? "Unknown"
+    }
+
+    /// Most recent existing entry for this exact plate text, if any — lets
+    /// the Read screen flag a repeat before a second entry for the same car
+    /// gets saved, rather than only surfacing it later in History.
+    private var priorSighting: PlateEntry? {
+        guard let text = displayedText?.uppercased(), !text.isEmpty else { return nil }
+        return allEntries.first { $0.plateNumber == text }
+    }
+
+    private func priorSightingMessage(_ entry: PlateEntry) -> String {
+        let relative = Self.relativeFormatter.localizedString(for: entry.capturedAt, relativeTo: .now)
+        return "ALREADY LOGGED \(relative.uppercased()) — TAGGED \(entry.tag.uppercased())"
     }
 
     /// Once zoomed in on this photo (here or from the correction editor),
@@ -113,7 +135,7 @@ struct ReadEntryView: View {
                     Color.black
                     Image(uiImage: previewImage)
                         .resizable()
-                        .scaledToFit()
+                        .scaledToFill()
                         .grayscale(1.0)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -182,6 +204,16 @@ struct ReadEntryView: View {
                     .padding(9)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .overlay(Rectangle().stroke(PLColor.accentOnDark, lineWidth: PLSpacing.ruleWidth))
+                    .padding(.top, 10)
+            }
+
+            if let priorSighting {
+                Text(priorSightingMessage(priorSighting))
+                    .plType(PLTypeStyle(.bold, 11, trackingEm: 0.04))
+                    .foregroundStyle(PLColor.ink)
+                    .padding(9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PLColor.surfaceAlt)
                     .padding(.top, 10)
             }
 
