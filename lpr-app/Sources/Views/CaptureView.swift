@@ -50,8 +50,21 @@ struct CaptureView: View {
     /// still-parked car on every 2s tick while scanning past it, without
     /// permanently blocking that plate for the rest of the session.
     @State private var recentAutoScanPlates: [String: Date] = [:]
+    /// Plate text -> timestamps of recent (not-yet-queued) sightings. A
+    /// single frame's read is never enough on its own -- see
+    /// `autoScanConsensusCount` below.
+    @State private var recentSightings: [String: [Date]] = [:]
     @State private var pendingDetections: [PendingDetection] = []
     private let autoScanDedupWindow: TimeInterval = 60
+    /// How many times the exact same text has to be read before it's
+    /// trusted enough to queue. A plate that's actually legible keeps
+    /// producing the same string across the several frames it's in view;
+    /// a lone misread from one blurry/glared frame won't repeat, so this
+    /// alone filters out most of auto-scan's wrong reads without needing
+    /// a specialized model.
+    private let autoScanConsensusCount = 2
+    private let autoScanConsensusWindow: TimeInterval = 3
+    private let autoScanConfidenceThreshold: Float = 0.6
 
     var body: some View {
         Group {
@@ -297,15 +310,14 @@ struct CaptureView: View {
     /// between attempts — the only throttle is however long "grab a frame +
     /// run OCR" actually takes, which is what lets this keep up with a
     /// moving vehicle instead of sampling once every couple of seconds and
-    /// missing anything that passed through in between. Uses Vision's
-    /// `.fast` recognition specifically for this loop (manual captures
-    /// still use `.accurate`) to keep each pass as quick as possible; a
-    /// human reviews every result before anything saves regardless of
-    /// which recognition level found it.
+    /// missing anything that passed through in between. A human reviews
+    /// every result before anything saves regardless.
     ///
-    /// A confident, not-recently-seen plate goes into `pendingDetections`;
-    /// it does NOT interrupt what you're doing. Review (and explicitly
-    /// save or discard) happens later, via the REVIEW button.
+    /// A plate only reaches `pendingDetections` once the same text has been
+    /// read `autoScanConsensusCount` times in `autoScanConsensusWindow`
+    /// seconds — see `handleCaptured`. Queuing does NOT interrupt what
+    /// you're doing; review (and explicitly save or discard) happens later,
+    /// via the REVIEW button.
     private func startAutoScan() {
         autoScanTask?.cancel()
         autoScanTask = Task {
@@ -352,9 +364,15 @@ struct CaptureView: View {
             ocrInput = image
         }
 
-        let recognitionLevel: VNRequestTextRecognitionLevel = isAuto ? .fast : .accurate
+        // `.accurate` for both paths -- auto-scan's loop already throttles
+        // itself on however long a pass takes rather than a fixed interval,
+        // so there's no real speed win left to buy with `.fast`, and it was
+        // producing enough wrong reads to make auto-scan more annoying than
+        // useful. The consensus check below is what actually keeps this
+        // fast enough to still catch a moving vehicle despite the slower
+        // recognizer.
         let result = await withCheckedContinuation { continuation in
-            PlateOCRService.recognizePlates(in: ocrInput, recognitionLevel: recognitionLevel) { result in
+            PlateOCRService.recognizePlates(in: ocrInput, recognitionLevel: .accurate) { result in
                 continuation.resume(returning: result)
             }
         }
@@ -365,15 +383,24 @@ struct CaptureView: View {
             let now = Date.now
             guard
                 let best = result.candidates.first,
-                best.confidence >= 0.4
+                best.confidence >= autoScanConfidenceThreshold
             else {
                 return
             }
+
+            var sightings = (recentSightings[best.text] ?? []).filter { now.timeIntervalSince($0) < autoScanConsensusWindow }
+            sightings.append(now)
+            recentSightings[best.text] = sightings
+            recentSightings = recentSightings.filter { !$0.value.isEmpty }
+
+            guard sightings.count >= autoScanConsensusCount else { return }
+
             if let lastSeen = recentAutoScanPlates[best.text], now.timeIntervalSince(lastSeen) < autoScanDedupWindow {
                 return
             }
             recentAutoScanPlates[best.text] = now
             recentAutoScanPlates = recentAutoScanPlates.filter { now.timeIntervalSince($0.value) < autoScanDedupWindow }
+            recentSightings[best.text] = nil
             pendingDetections.append(PendingDetection(
                 candidates: result.candidates,
                 image: image,
