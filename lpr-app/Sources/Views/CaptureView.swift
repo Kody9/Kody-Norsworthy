@@ -118,7 +118,7 @@ struct CaptureView: View {
             stopAutoScan()
         }
         .onReceive(camera.$capturedImage.compactMap { $0 }) { image in
-            Task { await handleCaptured(image: image, isAuto: false) }
+            Task { await handleManualCapture(image: image) }
         }
         .fullScreenCover(isPresented: $showQueueList) {
             AutoScanQueueView(
@@ -283,6 +283,12 @@ struct CaptureView: View {
 
     private func requestPermissions() {
         locationService.requestPermission()
+        // Get a location fix in flight as soon as the camera appears,
+        // not just at the moment of capture -- otherwise the very first
+        // plate logged in a session can beat a cold GPS fix to the save
+        // and end up with no coordinates (no map pin) even though every
+        // capture after it has one.
+        locationService.requestOneShotLocation()
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             camera.configure()
@@ -331,7 +337,7 @@ struct CaptureView: View {
     /// every result before anything saves regardless.
     ///
     /// A single confident-enough frame is trusted immediately — see
-    /// `handleCaptured` — favoring catch-rate over precision, since a wrong
+    /// `handleAutoScanFrame` — favoring catch-rate over precision, since a wrong
     /// read is a quick correction on the Read screen but a car that was
     /// never queued at all can't be corrected. Queuing does NOT interrupt
     /// what you're doing; review (and explicitly save or discard) happens
@@ -356,11 +362,11 @@ struct CaptureView: View {
                     lastLocationRequest = Date.now
                     locationService.requestOneShotLocation()
                 }
-                guard let image = await camera.captureFrameSilently() else {
+                guard let frame = await camera.captureFrameSilently() else {
                     isReading = false
                     continue
                 }
-                await handleCaptured(image: image, isAuto: true)
+                await handleAutoScanFrame(frame)
             }
         }
     }
@@ -370,22 +376,25 @@ struct CaptureView: View {
         autoScanTask = nil
     }
 
-    private func handleCaptured(image: UIImage, isAuto: Bool) async {
-        // OCR only the framing-box region (plus a little tolerance) so
-        // street signs, other plates, etc. elsewhere in the shot don't get
-        // read as candidates — the full photo is still what gets saved.
-        let ocrInput: UIImage
-        if previewSize != .zero {
-            let fractionalBox = PlateFrameGeometry.fractionalBoxRect(in: previewSize)
-            ocrInput = image.croppedToPreviewRegion(previewSize: previewSize, fractionalRect: fractionalBox)
-        } else {
-            ocrInput = image
+    /// The framing-box region as a fraction of the live preview, or the
+    /// whole frame if the preview's size hasn't been recorded yet.
+    private var ocrFractionalBox: CGRect {
+        guard previewSize != .zero else { return CGRect(x: 0, y: 0, width: 1, height: 1) }
+        return PlateFrameGeometry.fractionalBoxRect(in: previewSize)
+    }
+
+    /// Auto-scan's hot path: renders only the cropped framing-box region
+    /// for OCR (cheap — see `CapturedVideoFrame`), and only renders the
+    /// full frame if a detection actually clears the bar to be queued.
+    private func handleAutoScanFrame(_ frame: CapturedVideoFrame) async {
+        guard let ocrInput = frame.cropped(previewSize: previewSize, fractionalRect: ocrFractionalBox) else {
+            isReading = false
+            return
         }
 
-        // Manual captures (READ PLATE) aren't time-pressured, so they always
-        // get `.accurate`; auto-scan's recognizer depends on the FAST/
-        // ACCURATE mode chosen in Setup (`autoScanFastMode`).
-        let recognitionLevel: VNRequestTextRecognitionLevel = (isAuto && autoScanFastMode) ? .fast : .accurate
+        // Auto-scan's recognizer depends on the FAST/ACCURATE mode chosen
+        // in Setup (`autoScanFastMode`).
+        let recognitionLevel: VNRequestTextRecognitionLevel = autoScanFastMode ? .fast : .accurate
         let result = await withCheckedContinuation { continuation in
             PlateOCRService.recognizePlates(in: ocrInput, recognitionLevel: recognitionLevel) { result in
                 continuation.resume(returning: result)
@@ -394,42 +403,52 @@ struct CaptureView: View {
 
         isReading = false
 
-        if isAuto {
-            let now = Date.now
-            guard
-                let best = result.candidates.first,
-                best.confidence >= autoScanConfidenceThreshold
-            else {
-                return
-            }
-
-            if !autoScanFastMode {
-                var sightings = (recentSightings[best.text] ?? []).filter { now.timeIntervalSince($0) < autoScanConsensusWindow }
-                sightings.append(now)
-                recentSightings[best.text] = sightings
-                recentSightings = recentSightings.filter { !$0.value.isEmpty }
-                guard sightings.count >= autoScanConsensusCount else { return }
-                recentSightings[best.text] = nil
-            }
-
-            if let lastSeen = recentAutoScanPlates[best.text], now.timeIntervalSince(lastSeen) < autoScanDedupWindow {
-                return
-            }
-            recentAutoScanPlates[best.text] = now
-            recentAutoScanPlates = recentAutoScanPlates.filter { now.timeIntervalSince($0.value) < autoScanDedupWindow }
-            Haptics.queued()
-            pendingDetections.append(PendingDetection(
-                candidates: result.candidates,
-                image: image,
-                location: locationService.lastLocation,
-                detectedState: result.detectedState
-            ))
-            if pendingDetections.count > 20 {
-                pendingDetections.removeFirst()
-            }
+        let now = Date.now
+        guard
+            let best = result.candidates.first,
+            best.confidence >= autoScanConfidenceThreshold
+        else {
             return
         }
 
+        if !autoScanFastMode {
+            var sightings = (recentSightings[best.text] ?? []).filter { now.timeIntervalSince($0) < autoScanConsensusWindow }
+            sightings.append(now)
+            recentSightings[best.text] = sightings
+            recentSightings = recentSightings.filter { !$0.value.isEmpty }
+            guard sightings.count >= autoScanConsensusCount else { return }
+            recentSightings[best.text] = nil
+        }
+
+        if let lastSeen = recentAutoScanPlates[best.text], now.timeIntervalSince(lastSeen) < autoScanDedupWindow {
+            return
+        }
+        recentAutoScanPlates[best.text] = now
+        recentAutoScanPlates = recentAutoScanPlates.filter { now.timeIntervalSince($0.value) < autoScanDedupWindow }
+        Haptics.queued()
+        pendingDetections.append(PendingDetection(
+            candidates: result.candidates,
+            image: frame.fullImage(),
+            location: locationService.lastLocation,
+            detectedState: result.detectedState
+        ))
+        if pendingDetections.count > 20 {
+            pendingDetections.removeFirst()
+        }
+    }
+
+    /// The manual "READ PLATE" path: not time-pressured the way auto-scan
+    /// is, so it always uses `.accurate` and always renders the full frame
+    /// (there's no queue here — it goes straight to the Read screen).
+    private func handleManualCapture(image: UIImage) async {
+        let ocrInput = image.croppedToPreviewRegion(previewSize: previewSize, fractionalRect: ocrFractionalBox)
+        let result = await withCheckedContinuation { continuation in
+            PlateOCRService.recognizePlates(in: ocrInput, recognitionLevel: .accurate) { result in
+                continuation.resume(returning: result)
+            }
+        }
+
+        isReading = false
         capturedImage = image
         capturedLocation = locationService.lastLocation
         photoZoomState.reset()

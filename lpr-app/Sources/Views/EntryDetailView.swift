@@ -6,12 +6,13 @@ import UIKit
 struct EntryDetailView: View {
     @Bindable var entry: PlateEntry
     let onBack: () -> Void
+    /// Lets tapping a past sighting jump straight to that entry instead of
+    /// only being able to view it from History.
+    let onSelectEntry: (PlateEntry) -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var allEntries: [PlateEntry]
 
-    @State private var vinDecodeResult: NHTSAVinDecoder.Result?
-    @State private var isDecoding = false
-    @State private var decodeError: String?
     @State private var shareFile: ShareableFile?
     @State private var showDeleteConfirmation = false
     @State private var showZoomedPhoto = false
@@ -30,6 +31,11 @@ struct EntryDetailView: View {
         entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
     }
 
+    /// Every other logged entry for this exact plate, most recent first.
+    private var pastSightings: [PlateEntry] {
+        allEntries.filter { $0.plateNumber == entry.plateNumber && $0.id != entry.id }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -40,7 +46,7 @@ struct EntryDetailView: View {
                     if let latitude = entry.latitude, let longitude = entry.longitude {
                         map(latitude: latitude, longitude: longitude)
                     }
-                    lookupsSection
+                    pastSightingsSection
                     fieldsSection
                 }
             }
@@ -174,9 +180,9 @@ struct EntryDetailView: View {
         }
     }
 
-    private var lookupsSection: some View {
+    private var pastSightingsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("PUBLIC LOOKUPS — OPENS IN BROWSER")
+            Text("PAST SIGHTINGS OF THIS PLATE")
                 .plType(.sectionLabel)
                 .foregroundStyle(PLColor.inkTertiary)
                 .padding(.horizontal, PLSpacing.gutter)
@@ -186,82 +192,48 @@ struct EntryDetailView: View {
                     Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
                 }
 
-            decodeVinRow
-
-            linkRow(title: "Stolen / salvage — NICB") {
-                UIApplication.shared.open(ExternalLookupLinks.nicbVinCheck())
-            }
-            linkRow(title: "Service history — CARFAX", showRule: false) {
-                UIApplication.shared.open(ExternalLookupLinks.carfaxFreeCheck())
-            }
-        }
-    }
-
-    private var decodeVinRow: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: decodeVin) {
-                HStack {
-                    Text("Decode VIN — NHTSA").plType(.linkRow).foregroundStyle(PLColor.ink)
-                    Spacer()
-                    if isDecoding {
-                        ProgressView()
-                    } else {
-                        Text("→").plType(.linkRow).foregroundStyle(PLColor.accentOnDark)
-                    }
-                }
-                .padding(.horizontal, PLSpacing.gutter)
-                .padding(.vertical, 14)
-            }
-            .buttonStyle(.plain)
-            .disabled((entry.vin ?? "").isEmpty || isDecoding)
-            .opacity((entry.vin ?? "").isEmpty ? 0.5 : 1)
-
-            if let result = vinDecodeResult {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let make = result.make { detailLine("Make", make) }
-                    if let model = result.model { detailLine("Model", model) }
-                    if let year = result.year { detailLine("Year", year) }
-                    if let bodyClass = result.bodyClass { detailLine("Body Type", bodyClass) }
-                }
-                .padding(.horizontal, PLSpacing.gutter)
-                .padding(.bottom, 12)
-            }
-            if let decodeError {
-                Text(decodeError)
+            if pastSightings.isEmpty {
+                Text("This is the only time this plate has been logged.")
                     .plType(.body)
-                    .foregroundStyle(PLColor.accentOnDark)
+                    .foregroundStyle(PLColor.inkTertiary)
                     .padding(.horizontal, PLSpacing.gutter)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 14)
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+                    }
+            } else {
+                ForEach(pastSightings) { sighting in
+                    sightingRow(sighting)
+                }
             }
         }
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
-        }
     }
 
-    private func detailLine(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label.uppercased()).plType(PLTypeStyle(.semibold, 11, trackingEm: 0.06)).foregroundStyle(PLColor.inkTertiary)
-            Spacer()
-            Text(value).plType(PLTypeStyle(.semibold, 13)).foregroundStyle(PLColor.inkSecondary)
-        }
-    }
-
-    private func linkRow(title: String, showRule: Bool = true, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private func sightingRow(_ sighting: PlateEntry) -> some View {
+        Button {
+            onSelectEntry(sighting)
+        } label: {
             HStack {
-                Text(title).plType(.linkRow).foregroundStyle(PLColor.ink)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(sighting.capturedAt.formatted(date: .abbreviated, time: .shortened))
+                        .plType(.linkRow)
+                        .foregroundStyle(PLColor.ink)
+                    Text(sighting.state.isEmpty ? "UNKNOWN" : sighting.state.uppercased())
+                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
+                        .foregroundStyle(PLColor.inkTertiary)
+                }
                 Spacer()
-                Text("→").plType(.linkRow).foregroundStyle(PLColor.accentOnDark)
+                Text(sighting.tag == "Parking Complaint" ? "PARKING" : sighting.tag.uppercased())
+                    .plType(PLTypeStyle(.bold, 11, trackingEm: 0.04))
+                    .foregroundStyle(sighting.tag == "BOLO" ? PLColor.accentOnDark : PLColor.inkTertiary)
+                Text("→").plType(.linkRow).foregroundStyle(PLColor.accentOnDark).padding(.leading, 10)
             }
             .padding(.horizontal, PLSpacing.gutter)
             .padding(.vertical, 14)
         }
         .buttonStyle(.plain)
         .overlay(alignment: .bottom) {
-            if showRule {
-                Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
-            }
+            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
         }
     }
 
@@ -314,26 +286,6 @@ struct EntryDetailView: View {
         .background(PLColor.surface)
         .overlay(alignment: .top) {
             Rectangle().fill(PLColor.accentOnDark).frame(height: PLSpacing.ruleWidth)
-        }
-    }
-
-    private func decodeVin() {
-        guard let vin = entry.vin, !vin.isEmpty else { return }
-        isDecoding = true
-        decodeError = nil
-        Task {
-            do {
-                let result = try await NHTSAVinDecoder.decode(vin: vin)
-                await MainActor.run {
-                    vinDecodeResult = result
-                    isDecoding = false
-                }
-            } catch {
-                await MainActor.run {
-                    decodeError = "Couldn't decode VIN: \(error.localizedDescription)"
-                    isDecoding = false
-                }
-            }
         }
     }
 }

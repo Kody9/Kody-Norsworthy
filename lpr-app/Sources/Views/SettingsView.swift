@@ -30,7 +30,7 @@ struct SettingsView: View {
                 sectionLabel("DATA")
                 row { LabeledRow(label: "Total Entries", value: "\(entries.count)") }
                 actionRow("Export as CSV") {
-                    if let url = CSVExporter.export(entries) {
+                    if let url = CSVExporter.export(entries, label: "All Entries") {
                         shareFile = ShareableFile(url: url)
                     }
                 }

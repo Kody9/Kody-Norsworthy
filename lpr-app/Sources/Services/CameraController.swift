@@ -25,7 +25,7 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     private let videoDataQueue = DispatchQueue(label: "com.platelog.camera.videodata")
     private let ciContext = CIContext()
     private var videoDevice: AVCaptureDevice?
-    private var pendingFrameCompletion: ((UIImage?) -> Void)?
+    private var pendingFrameCompletion: ((CapturedVideoFrame?) -> Void)?
     private var pendingFrameRequestID: UUID?
 
     @Published var capturedImage: UIImage?
@@ -128,13 +128,23 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     /// throttle: a new grab only starts once the previous one (frame +
     /// OCR) has fully finished.
     ///
+    /// Returns a `CapturedVideoFrame` wrapping the raw pixel buffer rather
+    /// than a rendered `UIImage` — the session runs at full photo
+    /// resolution (so the video feed is 12MP+, not a typical low-res video
+    /// preview stream), and rendering that entire frame to a `CGImage` on
+    /// every single scan pass was the dominant per-frame cost in the
+    /// auto-scan loop, slow enough to miss vehicles passing quickly through
+    /// frame. The caller renders only the small cropped region it actually
+    /// needs for OCR, and only pays for a full-frame render on the rare
+    /// pass that actually queues a detection.
+    ///
     /// Always calls `completion` exactly once, even if no frame ever
     /// arrives (e.g. the video data output failed to attach on this
     /// device) — a `nil` after ~0.75s rather than silently hanging
     /// forever, which previously left the caller's "is a capture in
     /// flight" state stuck true and permanently blocked all further
     /// auto-scan attempts.
-    func captureFrameSilently(completion: @escaping (UIImage?) -> Void) {
+    func captureFrameSilently(completion: @escaping (CapturedVideoFrame?) -> Void) {
         applyCurrentOrientationToOutputs()
         let requestID = UUID()
         videoDataQueue.async { [weak self] in
@@ -151,10 +161,10 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
 
     /// Async convenience over the completion-based grab, for use in a
     /// tight `while` loop (auto-scan) without nested closures.
-    func captureFrameSilently() async -> UIImage? {
+    func captureFrameSilently() async -> CapturedVideoFrame? {
         await withCheckedContinuation { continuation in
-            captureFrameSilently { image in
-                continuation.resume(returning: image)
+            captureFrameSilently { frame in
+                continuation.resume(returning: frame)
             }
         }
     }
@@ -168,13 +178,8 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
             DispatchQueue.main.async { completion(nil) }
             return
         }
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
-            DispatchQueue.main.async { completion(nil) }
-            return
-        }
-        let image = UIImage(cgImage: cgImage)
-        DispatchQueue.main.async { completion(image) }
+        let frame = CapturedVideoFrame(ciImage: CIImage(cvPixelBuffer: pixelBuffer), context: ciContext)
+        DispatchQueue.main.async { completion(frame) }
     }
 
     /// Both outputs need to be told the device's current physical rotation
@@ -204,6 +209,62 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
         case .landscapeRight: return .landscapeLeft
         default: return nil
         }
+    }
+}
+
+/// A grabbed video frame that hasn't been rendered to a `UIImage` yet.
+/// Rendering the full frame (`fullImage()`) is expensive at photo-preset
+/// resolution; `cropped(previewSize:fractionalRect:)` renders only the
+/// requested region directly from the source `CIImage`, which is what
+/// makes it cheap enough to call on every auto-scan pass.
+struct CapturedVideoFrame {
+    let ciImage: CIImage
+    let context: CIContext
+
+    /// Renders the entire frame. Call only when a detection is actually
+    /// being queued or saved, not on every scan pass.
+    func fullImage() -> UIImage? {
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
+    /// Renders only the region behind `fractionalRect` (0...1, origin
+    /// top-left) of a preview shown at `previewSize` with
+    /// `.resizeAspectFill` — the same aspect-fill mapping
+    /// `UIImage.croppedToPreviewRegion` uses, applied before rasterizing
+    /// instead of after, which is what avoids the full-frame render cost.
+    func cropped(previewSize: CGSize, fractionalRect: CGRect) -> UIImage? {
+        guard previewSize.width > 0, previewSize.height > 0 else { return fullImage() }
+        let imageSize = ciImage.extent.size
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+
+        let scale = max(previewSize.width / imageSize.width, previewSize.height / imageSize.height)
+        let visibleSize = CGSize(width: previewSize.width / scale, height: previewSize.height / scale)
+        let visibleOriginTopLeft = CGPoint(
+            x: (imageSize.width - visibleSize.width) / 2,
+            y: (imageSize.height - visibleSize.height) / 2
+        )
+
+        let cropTopLeft = CGRect(
+            x: visibleOriginTopLeft.x + fractionalRect.minX * visibleSize.width,
+            y: visibleOriginTopLeft.y + fractionalRect.minY * visibleSize.height,
+            width: fractionalRect.width * visibleSize.width,
+            height: fractionalRect.height * visibleSize.height
+        )
+
+        // CIImage uses a bottom-left origin (Y increases upward), unlike
+        // the top-left-origin rect computed above -- flip Y to match.
+        let cropInCIImageSpace = CGRect(
+            x: ciImage.extent.origin.x + cropTopLeft.origin.x,
+            y: ciImage.extent.origin.y + (imageSize.height - cropTopLeft.maxY),
+            width: cropTopLeft.width,
+            height: cropTopLeft.height
+        ).intersection(ciImage.extent)
+
+        guard !cropInCIImageSpace.isEmpty else { return nil }
+        let croppedCI = ciImage.cropped(to: cropInCIImageSpace)
+        guard let cgImage = context.createCGImage(croppedCI, from: croppedCI.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
 

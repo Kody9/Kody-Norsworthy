@@ -132,7 +132,11 @@ struct HistoryListView: View {
     var body: some View {
         Group {
             if let selectedEntry {
-                EntryDetailView(entry: selectedEntry, onBack: { self.selectedEntry = nil })
+                EntryDetailView(
+                    entry: selectedEntry,
+                    onBack: { self.selectedEntry = nil },
+                    onSelectEntry: { self.selectedEntry = $0 }
+                )
             } else {
                 listView
             }
@@ -353,7 +357,7 @@ struct HistoryListView: View {
             Text("· \(section.entries.count)").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
             Spacer()
             Button {
-                exportEntries(section.entries)
+                exportEntries(section.entries, label: section.label)
             } label: {
                 Text("EXPORT")
                     .underline()
@@ -391,15 +395,15 @@ struct HistoryListView: View {
         modelContext.delete(entry)
     }
 
-    private func exportEntries(_ list: [PlateEntry]) {
-        guard let url = CSVExporter.export(list) else { return }
+    private func exportEntries(_ list: [PlateEntry], label: String? = nil) {
+        guard let url = CSVExporter.export(list, label: label) else { return }
         shareFile = ShareableFile(url: url)
     }
 
     /// Exports whatever's currently on screen — tag filter, date scope,
     /// search, and sort all narrow this, same as the visible list.
     private func exportFiltered() {
-        exportEntries(sortedFiltered)
+        exportEntries(sortedFiltered, label: dateScope == .all ? nil : dateScope.label)
     }
 }
 

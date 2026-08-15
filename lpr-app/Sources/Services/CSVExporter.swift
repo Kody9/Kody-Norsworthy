@@ -1,7 +1,11 @@
 import Foundation
 
 enum CSVExporter {
-    static func export(_ entries: [PlateEntry]) -> URL? {
+    /// - Parameter label: A short description of what's being exported
+    ///   (e.g. "Today," "Aug 14, 2026," "All Entries"), folded into the
+    ///   filename so it reads as something you chose rather than a random
+    ///   string. Omit for a plain timestamped export.
+    static func export(_ entries: [PlateEntry], label: String? = nil) -> URL? {
         var csv = "Plate Number,State,VIN,Captured At,Latitude,Longitude,Tag,Notes\n"
         let formatter = ISO8601DateFormatter()
 
@@ -24,13 +28,28 @@ enum CSVExporter {
         }
 
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("plate_log_\(Int(Date().timeIntervalSince1970)).csv")
+            .appendingPathComponent(fileName(label: label))
         do {
             try csv.write(to: url, atomically: true, encoding: .utf8)
             return url
         } catch {
             return nil
         }
+    }
+
+    private static func fileName(label: String?) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy h.mm a"
+        let stamp = formatter.string(from: .now)
+        let base = label.map { "Watchtower - \($0) - \(stamp)" } ?? "Watchtower Export - \(stamp)"
+        return sanitized(base) + ".csv"
+    }
+
+    /// Strips characters that are invalid (or just awkward) in a filename
+    /// on iOS/macOS -- notably `:` and `/`.
+    private static func sanitized(_ raw: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+        return raw.components(separatedBy: invalid).joined(separator: "-")
     }
 
     private nonisolated static func escape(_ field: String) -> String {

@@ -2,29 +2,18 @@
 
 A personal license-plate quick-capture app for iPhone: point the camera at a
 plate, on-device OCR reads it, you confirm it, and it's saved locally with a
-timestamp, GPS location, and a photo. Nothing leaves the device except when
-*you* tap one of the optional "public lookup" links.
+timestamp, GPS location, and a photo. Nothing ever leaves the device.
 
 ## What this app does — and deliberately does not do
 
 - **Capture & log**: camera → on-device OCR (Apple Vision) → you confirm/edit
   the plate text, state, tag, and notes → saved to SwiftData, entirely on the
   phone.
-- **History**: searchable/filterable log of everything you've captured, with
-  CSV export and a "clear all data" option.
-- **Public lookups (opt-in, per entry)**:
-  - **NHTSA vPIC VIN decode** — a free, official US government API. Real API
-    call, returns make/model/year/body type from a VIN. No owner data exists
-    in this API.
-  - **NICB VINCheck** — opens NICB's free stolen/salvage VIN-check tool in
-    your browser. It's a web form, so the app can't pre-fill the VIN for you;
-    paste it in once you're there.
-  - **CARFAX free VIN check** — opens CARFAX's free consumer report page in
-    your browser for past service/inspection history. CARFAX is a paid
-    commercial product for anything beyond the free tier, and has no public
-    API for individual developers, so this is a link-out, not an integration.
-  - **Web search** — a generic browser search for the plate text. Rarely
-    useful (plates aren't indexed to identities), but harmless.
+- **History**: searchable/filterable/sortable log of everything you've
+  captured, with a real map view, CSV export (whole log, current filter, or a
+  single day), and a "clear all data" option.
+- **Past sightings**: an entry's detail screen shows every other time that
+  exact plate has been logged, tap one to jump straight to it.
 - **No plate-to-owner lookup, ever.** DMV registration records are protected
   by the federal Driver's Privacy Protection Act (and most state equivalents).
   There is no legitimate public API that maps a plate to an owner's identity,
@@ -60,8 +49,6 @@ lpr-app/
       CameraController.swift   AVFoundation capture session + preview
       PlateOCRService.swift    Vision-based plate text recognition
       LocationService.swift    CoreLocation wrapper
-      NHTSAVinDecoder.swift    Free public VIN decode API client
-      ExternalLookupLinks.swift  NICB/CARFAX/web-search deep links
       OwnerLookupProvider.swift  Unimplemented extension point (see above)
       CSVExporter.swift        Export entries to CSV
     Views/
@@ -113,7 +100,5 @@ open PlateLog.xcodeproj
   characters, at least one digit), not a specialized ALPR model — it will
   sometimes miss plates or pick up other text in frame. Always review/edit
   the suggested text before saving; that's why the confirm screen exists.
-- VIN capture is manual entry only (no VIN-plate OCR yet) — type it in on the
-  entry detail screen if you have it.
-- NICB and CARFAX links open their web tools rather than pre-filling the VIN,
-  since neither offers a documented way to do that from a URL.
+- VIN capture is manual entry only (no VIN-plate OCR, and no VIN decode
+  lookup) — it's just a note field.
