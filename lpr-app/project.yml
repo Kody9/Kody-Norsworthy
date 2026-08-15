@@ -12,9 +12,9 @@ targets:
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: Plate Log
-        NSCameraUsageDescription: "Plate Log uses the camera to capture license plate photos for your personal log."
-        NSLocationWhenInUseUsageDescription: "Plate Log records the location where each plate was captured."
+        CFBundleDisplayName: Watchtower
+        NSCameraUsageDescription: "Watchtower uses the camera to capture license plate photos for your personal log."
+        NSLocationWhenInUseUsageDescription: "Watchtower records the location where each plate was captured."
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

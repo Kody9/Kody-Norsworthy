@@ -1,4 +1,4 @@
-# Plate Log
+# Watchtower
 
 A personal license-plate quick-capture app for iPhone: point the camera at a
 plate, on-device OCR reads it, you confirm it, and it's saved locally with a
@@ -92,9 +92,9 @@ open PlateLog.xcodeproj
    needed").
 4. In the target's **Info** tab, add these keys (also listed in
    `project.yml` if you switch to Option A later):
-   - `NSCameraUsageDescription` — "Plate Log uses the camera to capture
+   - `NSCameraUsageDescription` — "Watchtower uses the camera to capture
      license plate photos for your personal log."
-   - `NSLocationWhenInUseUsageDescription` — "Plate Log records the location
+   - `NSLocationWhenInUseUsageDescription` — "Watchtower records the location
      where each plate was captured."
 
 ### Running it

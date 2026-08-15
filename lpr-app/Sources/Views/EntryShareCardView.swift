@@ -106,7 +106,7 @@ struct EntryShareCardView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
             Rectangle().fill(Color.black.opacity(0.15)).frame(height: 1)
-            Text("Captured on-device with Plate Log. Not sourced from any government, DMV, or law enforcement database.")
+            Text("Captured on-device with Watchtower. Not sourced from any government, DMV, or law enforcement database.")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Color.black.opacity(0.55))
         }
