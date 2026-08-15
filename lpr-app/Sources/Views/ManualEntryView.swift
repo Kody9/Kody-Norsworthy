@@ -74,9 +74,10 @@ struct ManualEntryView: View {
             .padding(.horizontal, PLSpacing.gutter)
             .padding(.vertical, 12)
 
-            // Scrollable so nothing clips in landscape or on smaller
-            // screens — the grid alone is ~340pt tall, which doesn't fit a
-            // landscape iPhone's ~375-430pt height alongside everything else.
+            // Only the photo/plate reference scrolls -- the keyboard and
+            // buttons below stay pinned to the bottom of the screen so
+            // they land under your thumb instead of up near the photo,
+            // however tall that reference content ends up being.
             ScrollView {
                 VStack(spacing: 0) {
                     photoReference
@@ -100,72 +101,73 @@ struct ManualEntryView: View {
                     .overlay(alignment: .bottom) {
                         Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
                     }
-
-                    GeometryReader { geo in
-                        let keyWidth = (geo.size.width - keySpacing * 9) / 10
-                        VStack(spacing: keySpacing) {
-                            ForEach(keyboardRows.indices, id: \.self) { rowIndex in
-                                HStack(spacing: keySpacing) {
-                                    Spacer(minLength: 0)
-                                    ForEach(keyboardRows[rowIndex], id: \.self) { key in
-                                        Button {
-                                            if text.count < characterLimit {
-                                                text.append(key)
-                                            }
-                                        } label: {
-                                            Text(String(key))
-                                                .plType(PLTypeStyle(.heavy, 20))
-                                                .foregroundStyle(PLColor.ink)
-                                                .frame(width: keyWidth, height: keyRowHeight)
-                                                .background(PLColor.surface)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                            }
-                        }
-                    }
-                    .frame(height: keyRowHeight * 4 + keySpacing * 3)
-                    .padding(.horizontal, PLSpacing.gutter)
-                    .padding(.top, PLSpacing.gutter)
-                    .padding(.bottom, PLSpacing.sm)
-
-                    HStack(spacing: 2) {
-                        Button {
-                            if !text.isEmpty { text.removeLast() }
-                        } label: {
-                            Text("DELETE")
-                                .plType(PLTypeStyle(.heavy, 14, trackingEm: 0.06))
-                                .foregroundStyle(PLColor.ink)
-                                .frame(height: 56)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, PLSpacing.gutter)
-                                .background(PLColor.surface)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            text = ""
-                        } label: {
-                            Text("CLEAR")
-                                .plType(PLTypeStyle(.heavy, 14, trackingEm: 0.06))
-                                .foregroundStyle(PLColor.ink)
-                                .frame(height: 56)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, PLSpacing.gutter)
-                                .background(PLColor.surface)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, PLSpacing.gutter)
-
-                    Text("Screen is held at minimum luminance in this mode; no white fields, no flash.")
-                        .plType(.body)
-                        .foregroundStyle(PLColor.inkTertiary.opacity(0.8))
-                        .padding(PLSpacing.gutter)
                 }
             }
+
+            GeometryReader { geo in
+                let keyWidth = (geo.size.width - keySpacing * 9) / 10
+                VStack(spacing: keySpacing) {
+                    ForEach(keyboardRows.indices, id: \.self) { rowIndex in
+                        HStack(spacing: keySpacing) {
+                            Spacer(minLength: 0)
+                            ForEach(keyboardRows[rowIndex], id: \.self) { key in
+                                Button {
+                                    if text.count < characterLimit {
+                                        text.append(key)
+                                    }
+                                } label: {
+                                    Text(String(key))
+                                        .plType(PLTypeStyle(.heavy, 20))
+                                        .foregroundStyle(PLColor.ink)
+                                        .frame(width: keyWidth, height: keyRowHeight)
+                                        .background(PLColor.surface)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }
+            .frame(height: keyRowHeight * 4 + keySpacing * 3)
+            .padding(.horizontal, PLSpacing.gutter)
+            .padding(.top, PLSpacing.gutter)
+            .padding(.bottom, PLSpacing.sm)
+
+            HStack(spacing: 2) {
+                Button {
+                    if !text.isEmpty { text.removeLast() }
+                } label: {
+                    Text("DELETE")
+                        .plType(PLTypeStyle(.heavy, 14, trackingEm: 0.06))
+                        .foregroundStyle(PLColor.ink)
+                        .frame(height: 56)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, PLSpacing.gutter)
+                        .background(PLColor.surface)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    text = ""
+                } label: {
+                    Text("CLEAR")
+                        .plType(PLTypeStyle(.heavy, 14, trackingEm: 0.06))
+                        .foregroundStyle(PLColor.ink)
+                        .frame(height: 56)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, PLSpacing.gutter)
+                        .background(PLColor.surface)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, PLSpacing.gutter)
+
+            Text("Screen is held at minimum luminance in this mode; no white fields, no flash.")
+                .plType(.body)
+                .foregroundStyle(PLColor.inkTertiary.opacity(0.8))
+                .padding(.horizontal, PLSpacing.gutter)
+                .padding(.vertical, 10)
 
             PLPrimaryButton(
                 primaryLabel,
@@ -221,8 +223,7 @@ struct ManualEntryView: View {
             // Without this, the button's tappable area follows its ZStack
             // label's unclamped natural size (the image inside wants
             // maxWidth/maxHeight .infinity) rather than the 110pt frame
-            // actually drawn -- which, sitting right above the keyboard
-            // grid, could swallow taps meant for the keys below it.
+            // actually drawn.
             .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
                 Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
