@@ -41,7 +41,7 @@ enum CSVExporter {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy h.mm a"
         let stamp = formatter.string(from: .now)
-        let base = label.map { "Watchtower - \($0) - \(stamp)" } ?? "Watchtower Export - \(stamp)"
+        let base = label.map { "SAL - \($0) - \(stamp)" } ?? "SAL Export - \(stamp)"
         return sanitized(base) + ".csv"
     }
 

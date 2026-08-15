@@ -90,7 +90,7 @@ struct SettingsView: View {
                             .tint(PLColor.accentOnDark)
                     }
                 }
-                Text("Requires Face ID, Touch ID, or your device passcode to open Watchtower — every time it's brought back to the foreground, not just on cold launch.")
+                Text("Requires Face ID, Touch ID, or your device passcode to open SAL — every time it's brought back to the foreground, not just on cold launch.")
                     .plType(.body)
                     .foregroundStyle(PLColor.inkTertiary)
                     .padding(.horizontal, PLSpacing.gutter)

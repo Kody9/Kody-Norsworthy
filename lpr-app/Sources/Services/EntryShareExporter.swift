@@ -19,7 +19,7 @@ enum EntryShareExporter {
         }
 
         let safePlate = entry.plateNumber.trimmingCharacters(in: .whitespaces)
-        let fileName = (safePlate.isEmpty ? "Entry" : safePlate) + " - Watchtower Record.pdf"
+        let fileName = (safePlate.isEmpty ? "Entry" : safePlate) + " - SAL Record.pdf"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         do {
             try data.write(to: url)

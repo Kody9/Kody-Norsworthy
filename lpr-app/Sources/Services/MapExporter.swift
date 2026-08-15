@@ -62,7 +62,7 @@ enum MapExporter {
     private static func fileName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy h.mm a"
-        let raw = "Watchtower Map - \(formatter.string(from: .now))"
+        let raw = "SAL Map - \(formatter.string(from: .now))"
         let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
         return raw.components(separatedBy: invalid).joined(separator: "-") + ".png"
     }

@@ -11,7 +11,7 @@ struct LockScreenView: View {
         VStack(spacing: PLSpacing.xl) {
             Spacer()
 
-            Text("WATCHTOWER")
+            Text("SAL")
                 .plType(PLTypeStyle(.heavy, 16, trackingEm: 0.14))
                 .foregroundStyle(PLColor.inkTertiary)
 

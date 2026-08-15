@@ -12,10 +12,10 @@ targets:
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: Watchtower
-        NSCameraUsageDescription: "Watchtower uses the camera to capture license plate photos for your personal log."
-        NSLocationWhenInUseUsageDescription: "Watchtower records the location where each plate was captured."
-        NSFaceIDUsageDescription: "Watchtower can use Face ID to lock the app when App Lock is turned on in Setup."
+        CFBundleDisplayName: SAL
+        NSCameraUsageDescription: "SAL uses the camera to capture license plate photos for your personal log."
+        NSLocationWhenInUseUsageDescription: "SAL records the location where each plate was captured."
+        NSFaceIDUsageDescription: "SAL can use Face ID to lock the app when App Lock is turned on in Setup."
         UILaunchScreen:
           UIColorName: LaunchBackground
           UIImageName: LaunchIcon

@@ -23,7 +23,7 @@ final class AppLockService: ObservableObject {
             return
         }
 
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock Watchtower") { [weak self] success, evaluationError in
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock SAL") { [weak self] success, evaluationError in
             Task { @MainActor in
                 self?.isUnlocked = success
                 self?.lastError = success ? nil : evaluationError?.localizedDescription

@@ -1,4 +1,4 @@
-# Watchtower
+# SAL — Secure Auto Logger
 
 A personal license-plate quick-capture app for iPhone: point the camera at a
 plate, on-device OCR reads it, you confirm it, and it's saved locally with a
@@ -79,10 +79,12 @@ open PlateLog.xcodeproj
    needed").
 4. In the target's **Info** tab, add these keys (also listed in
    `project.yml` if you switch to Option A later):
-   - `NSCameraUsageDescription` — "Watchtower uses the camera to capture
+   - `NSCameraUsageDescription` — "SAL uses the camera to capture
      license plate photos for your personal log."
-   - `NSLocationWhenInUseUsageDescription` — "Watchtower records the location
+   - `NSLocationWhenInUseUsageDescription` — "SAL records the location
      where each plate was captured."
+   - `NSFaceIDUsageDescription` — "SAL can use Face ID to lock the app when
+     App Lock is turned on in Setup."
 
 ### Running it
 
