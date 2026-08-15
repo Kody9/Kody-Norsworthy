@@ -9,14 +9,75 @@ private enum HistoryFilter: String, CaseIterable, Hashable {
     case map = "MAP"
 }
 
+private enum HistorySortOption: String, CaseIterable, Hashable {
+    case newest = "NEWEST"
+    case oldest = "OLDEST"
+    case plate = "PLATE A–Z"
+}
+
+/// Narrows the list (and what EXPORT sends) to a time window. `.custom`
+/// carries whole calendar days — `contains` treats `end` as inclusive
+/// through the end of that day, not a specific timestamp.
+private enum HistoryDateScope: Hashable {
+    case all, today, yesterday, last7Days, last30Days
+    case custom(start: Date, end: Date)
+
+    var label: String {
+        switch self {
+        case .all: return "ALL TIME"
+        case .today: return "TODAY"
+        case .yesterday: return "YESTERDAY"
+        case .last7Days: return "LAST 7 DAYS"
+        case .last30Days: return "LAST 30 DAYS"
+        case .custom: return "CUSTOM RANGE"
+        }
+    }
+
+    func contains(_ date: Date) -> Bool {
+        let calendar = Calendar.current
+        switch self {
+        case .all:
+            return true
+        case .today:
+            return calendar.isDateInToday(date)
+        case .yesterday:
+            return calendar.isDateInYesterday(date)
+        case .last7Days:
+            let cutoff = calendar.date(byAdding: .day, value: -7, to: .now) ?? .distantPast
+            return date >= cutoff
+        case .last30Days:
+            let cutoff = calendar.date(byAdding: .day, value: -30, to: .now) ?? .distantPast
+            return date >= cutoff
+        case .custom(let start, let end):
+            let rangeStart = calendar.startOfDay(for: start)
+            let rangeEnd = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) ?? end
+            return date >= rangeStart && date < rangeEnd
+        }
+    }
+}
+
+private struct DaySection: Identifiable {
+    let id: Date
+    let label: String
+    let entries: [PlateEntry]
+}
+
 struct HistoryListView: View {
     @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var entries: [PlateEntry]
     @Environment(\.modelContext) private var modelContext
     @State private var searchText = ""
     @State private var filter: HistoryFilter = .all
+    @State private var sortOption: HistorySortOption = .newest
+    @State private var dateScope: HistoryDateScope = .all
+    @State private var showCustomRangeSheet = false
+    @State private var customRangeStart: Date = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+    @State private var customRangeEnd: Date = .now
     @State private var selectedEntry: PlateEntry?
     @State private var shareFile: ShareableFile?
 
+    /// Tag filter, date scope, and search applied — not yet sorted. The
+    /// @Query itself is already newest-first, which `sortedFiltered` relies
+    /// on for its `.newest`/`.oldest` cases.
     private var filtered: [PlateEntry] {
         var result = entries
         switch filter {
@@ -25,12 +86,44 @@ struct HistoryListView: View {
         case .followUp: result = result.filter { $0.tag == "Follow-up" }
         case .map: result = result.filter { $0.latitude != nil && $0.longitude != nil }
         }
+        result = result.filter { dateScope.contains($0.capturedAt) }
         guard !searchText.isEmpty else { return result }
         return result.filter {
             $0.plateNumber.localizedCaseInsensitiveContains(searchText) ||
             $0.notes.localizedCaseInsensitiveContains(searchText) ||
             $0.tag.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    private var sortedFiltered: [PlateEntry] {
+        switch sortOption {
+        case .newest: return filtered
+        case .oldest: return filtered.reversed()
+        case .plate: return filtered.sorted { $0.plateNumber < $1.plateNumber }
+        }
+    }
+
+    /// Only meaningful for the date-ordered sorts — grouping while sorted
+    /// alphabetically by plate would scatter each day across the list.
+    private var daySections: [DaySection] {
+        let calendar = Calendar.current
+        var groups: [Date: [PlateEntry]] = [:]
+        var order: [Date] = []
+        for entry in sortedFiltered {
+            let day = calendar.startOfDay(for: entry.capturedAt)
+            if groups[day] == nil { order.append(day) }
+            groups[day, default: []].append(entry)
+        }
+        return order.map { day in
+            DaySection(id: day, label: dayLabel(for: day), entries: groups[day] ?? [])
+        }
+    }
+
+    private func dayLabel(for day: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return "TODAY" }
+        if calendar.isDateInYesterday(day) { return "YESTERDAY" }
+        return day.formatted(.dateTime.month(.abbreviated).day().year()).uppercased()
     }
 
     var body: some View {
@@ -44,6 +137,17 @@ struct HistoryListView: View {
         .background(PLColor.ground)
         .sheet(item: $shareFile) { file in
             ShareSheet(activityItems: [file.url])
+        }
+        .sheet(isPresented: $showCustomRangeSheet) {
+            CustomDateRangeView(
+                start: $customRangeStart,
+                end: $customRangeEnd,
+                onApply: {
+                    dateScope = .custom(start: customRangeStart, end: customRangeEnd)
+                    showCustomRangeSheet = false
+                },
+                onCancel: { showCustomRangeSheet = false }
+            )
         }
     }
 
@@ -95,10 +199,10 @@ struct HistoryListView: View {
             .overlay(alignment: .top) { Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth) }
             .overlay(alignment: .bottom) { Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth) }
 
-            HStack {
-                Text("ALL ENTRIES").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+            HStack(spacing: PLSpacing.md) {
+                dateScopeMenu
                 Spacer()
-                Text("\(filtered.count) ENTRIES").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+                sortMenu
             }
             .padding(.horizontal, PLSpacing.gutter)
             .padding(.top, 14)
@@ -114,20 +218,86 @@ struct HistoryListView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
-                        ForEach(filtered) { entry in
-                            EntryRow(entry: entry, repeatCount: repeatCount(for: entry))
-                                .contentShape(Rectangle())
-                                .onTapGesture { selectedEntry = entry }
-                                .swipeActions {
-                                    Button(role: .destructive) { delete(entry) } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                        if sortOption == .plate {
+                            ForEach(sortedFiltered) { entry in
+                                entryRow(entry)
+                            }
+                        } else {
+                            ForEach(daySections) { section in
+                                daySectionHeader(section)
+                                ForEach(section.entries) { entry in
+                                    entryRow(entry)
                                 }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    private var dateScopeMenu: some View {
+        Menu {
+            Button("All Time") { dateScope = .all }
+            Button("Today") { dateScope = .today }
+            Button("Yesterday") { dateScope = .yesterday }
+            Button("Last 7 Days") { dateScope = .last7Days }
+            Button("Last 30 Days") { dateScope = .last30Days }
+            Button("Custom Range…") { showCustomRangeSheet = true }
+        } label: {
+            HStack(spacing: 4) {
+                Text(dateScope.label)
+                Text("▾")
+            }
+            .plType(PLTypeStyle(.heavy, 11, trackingEm: 0.08))
+            .foregroundStyle(PLColor.inkTertiary)
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(HistorySortOption.allCases, id: \.self) { option in
+                Button(option.rawValue) { sortOption = option }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text("SORT: \(sortOption.rawValue)")
+                Text("▾")
+            }
+            .plType(PLTypeStyle(.heavy, 11, trackingEm: 0.08))
+            .foregroundStyle(PLColor.inkTertiary)
+        }
+    }
+
+    private func daySectionHeader(_ section: DaySection) -> some View {
+        HStack {
+            Text(section.label).plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+            Text("· \(section.entries.count)").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+            Spacer()
+            Button {
+                exportEntries(section.entries)
+            } label: {
+                Text("EXPORT")
+                    .underline()
+                    .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
+                    .foregroundStyle(PLColor.ink)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, PLSpacing.gutter)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
+    }
+
+    private func entryRow(_ entry: PlateEntry) -> some View {
+        EntryRow(entry: entry, repeatCount: repeatCount(for: entry))
+            .contentShape(Rectangle())
+            .onTapGesture { selectedEntry = entry }
+            .swipeActions {
+                Button(role: .destructive) { delete(entry) } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
     }
 
     private func repeatCount(for entry: PlateEntry) -> Int {
@@ -139,11 +309,15 @@ struct HistoryListView: View {
         modelContext.delete(entry)
     }
 
-    /// Exports whatever's currently on screen — the active tag filter and
-    /// search text both narrow this, same as the visible list — as CSV.
-    private func exportFiltered() {
-        guard let url = CSVExporter.export(filtered) else { return }
+    private func exportEntries(_ list: [PlateEntry]) {
+        guard let url = CSVExporter.export(list) else { return }
         shareFile = ShareableFile(url: url)
+    }
+
+    /// Exports whatever's currently on screen — tag filter, date scope,
+    /// search, and sort all narrow this, same as the visible list.
+    private func exportFiltered() {
+        exportEntries(sortedFiltered)
     }
 }
 
@@ -184,6 +358,61 @@ private struct EntryRow: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, PLSpacing.gutter)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+        }
+    }
+}
+
+private struct CustomDateRangeView: View {
+    @Binding var start: Date
+    @Binding var end: Date
+    let onApply: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button("CANCEL", action: onCancel)
+                    .buttonStyle(.plain)
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.06))
+                    .foregroundStyle(PLColor.inkTertiary)
+                Spacer()
+                Text("CUSTOM RANGE")
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.06))
+                    .foregroundStyle(PLColor.accentOnDark)
+            }
+            .padding(.horizontal, PLSpacing.gutter)
+            .padding(.vertical, 14)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
+            }
+
+            VStack(alignment: .leading, spacing: PLSpacing.xl) {
+                dateRow(label: "FROM", date: $start)
+                dateRow(label: "TO", date: $end)
+            }
+            .padding(PLSpacing.gutter)
+
+            Spacer()
+
+            PLPrimaryButton("APPLY", action: onApply)
+                .padding(.horizontal, PLSpacing.gutter)
+                .padding(.bottom, PLSpacing.gutter)
+        }
+        .background(PLColor.ground)
+        .colorScheme(.dark)
+    }
+
+    private func dateRow(label: String, date: Binding<Date>) -> some View {
+        HStack {
+            Text(label).plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+            Spacer()
+            DatePicker("", selection: date, in: ...Date.now, displayedComponents: .date)
+                .labelsHidden()
+                .tint(PLColor.accentOnDark)
+        }
+        .padding(.vertical, 12)
         .overlay(alignment: .bottom) {
             Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
         }

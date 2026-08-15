@@ -58,42 +58,43 @@ struct AutoScanQueueView: View {
     }
 
     private func row(for detection: PendingDetection) -> some View {
-        HStack(spacing: PLSpacing.md) {
-            Group {
-                if let image = detection.image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .grayscale(1.0)
-                } else {
-                    PLColor.surface
+        VStack(alignment: .leading, spacing: PLSpacing.md) {
+            HStack(spacing: PLSpacing.md) {
+                Group {
+                    if let image = detection.image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .grayscale(1.0)
+                    } else {
+                        PLColor.surface
+                    }
                 }
-            }
-            .frame(width: 60, height: 60)
-            .clipped()
+                .frame(width: 72, height: 72)
+                .clipped()
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(detection.candidates.first?.text ?? "—")
-                    .plType(PLTypeStyle(.heavy, 18, trackingEm: 0.02))
-                    .foregroundStyle(PLColor.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                if let confidence = detection.candidates.first?.confidence {
-                    Text("\(Int(confidence * 100))% CONFIDENCE")
-                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
-                        .foregroundStyle(PLColor.inkTertiary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(detection.candidates.first?.text ?? "—")
+                        .plType(PLTypeStyle(.heavy, 20, trackingEm: 0.02))
+                        .foregroundStyle(PLColor.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    if let confidence = detection.candidates.first?.confidence {
+                        Text("\(Int(confidence * 100))% CONFIDENCE")
+                            .plType(PLTypeStyle(.bold, 11, trackingEm: 0.06))
+                            .foregroundStyle(PLColor.inkTertiary)
+                    }
                 }
+
+                Spacer(minLength: 0)
             }
 
-            Spacer(minLength: PLSpacing.sm)
-
-            VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 2) {
                 Button { onQuickLog(detection) } label: {
                     Text("DONE")
-                        .plType(PLTypeStyle(.bold, 11, trackingEm: 0.06))
+                        .plType(PLTypeStyle(.bold, 13, trackingEm: 0.04))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, minHeight: 48)
                         .background(PLColor.accent)
                 }
                 .buttonStyle(.plain)
@@ -102,25 +103,25 @@ struct AutoScanQueueView: View {
 
                 Button { onReview(detection) } label: {
                     Text("REVIEW")
-                        .plType(PLTypeStyle(.bold, 11, trackingEm: 0.06))
+                        .plType(PLTypeStyle(.bold, 13, trackingEm: 0.04))
                         .foregroundStyle(PLColor.ink)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, minHeight: 48)
                         .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
                 }
                 .buttonStyle(.plain)
 
                 Button { onDiscard(detection) } label: {
                     Text("DISCARD")
-                        .underline()
-                        .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
-                        .foregroundStyle(PLColor.inkTertiary)
+                        .plType(PLTypeStyle(.bold, 13, trackingEm: 0.04))
+                        .foregroundStyle(PLColor.accentOnDark)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .overlay(Rectangle().stroke(PLColor.accentOnDark.opacity(0.5), lineWidth: PLSpacing.ruleWidth))
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, PLSpacing.gutter)
-        .padding(.vertical, PLSpacing.sm)
+        .padding(.vertical, PLSpacing.md)
         .overlay(alignment: .bottom) {
             Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
         }
