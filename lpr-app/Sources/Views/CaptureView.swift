@@ -308,6 +308,7 @@ struct CaptureView: View {
     }
 
     private func capture() {
+        Haptics.capture()
         isReading = true
         locationService.requestOneShotLocation()
         camera.capturePhoto()
@@ -416,6 +417,7 @@ struct CaptureView: View {
             }
             recentAutoScanPlates[best.text] = now
             recentAutoScanPlates = recentAutoScanPlates.filter { now.timeIntervalSince($0.value) < autoScanDedupWindow }
+            Haptics.queued()
             pendingDetections.append(PendingDetection(
                 candidates: result.candidates,
                 image: image,
@@ -460,6 +462,7 @@ struct CaptureView: View {
             photoData: detection.image?.jpegData(compressionQuality: 0.7)
         )
         modelContext.insert(entry)
+        Haptics.logged()
     }
 
     /// Pulls one specific queued detection (picked from the triage list)
@@ -515,6 +518,7 @@ struct CaptureView: View {
             photoData: capturedImage?.jpegData(compressionQuality: 0.7)
         )
         modelContext.insert(entry)
+        Haptics.logged()
 
         savedPlateText = plateText.uppercased()
         phase = .saved

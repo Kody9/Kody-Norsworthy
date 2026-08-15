@@ -1,3 +1,5 @@
+import CoreLocation
+import MapKit
 import SwiftData
 import SwiftUI
 import UIKit
@@ -231,6 +233,8 @@ struct HistoryListView: View {
                     .plType(.body)
                     .foregroundStyle(PLColor.inkTertiary)
                 Spacer()
+            } else if filter == .map {
+                mapView
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
@@ -283,6 +287,63 @@ struct HistoryListView: View {
             }
             .plType(PLTypeStyle(.heavy, 11, trackingEm: 0.08))
             .foregroundStyle(PLColor.inkTertiary)
+        }
+    }
+
+    /// All entries currently on screen, as coordinates -- filtered to just
+    /// the ones with a location, same set `filter == .map` already narrows
+    /// `filtered` to (search/date scope still apply too).
+    private var mapEntries: [(entry: PlateEntry, coordinate: CLLocationCoordinate2D)] {
+        filtered.compactMap { entry in
+            guard let lat = entry.latitude, let lon = entry.longitude else { return nil }
+            return (entry, CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        }
+    }
+
+    /// A region that fits every pin, falling back to a continental-US view
+    /// when nothing has a location yet.
+    private var mapRegion: MKCoordinateRegion {
+        let coordinates = mapEntries.map(\.coordinate)
+        guard !coordinates.isEmpty else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795),
+                span: MKCoordinateSpan(latitudeDelta: 50, longitudeDelta: 50)
+            )
+        }
+        let lats = coordinates.map(\.latitude)
+        let lons = coordinates.map(\.longitude)
+        let minLat = lats.min() ?? 0, maxLat = lats.max() ?? 0
+        let minLon = lons.min() ?? 0, maxLon = lons.max() ?? 0
+        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
+        let span = MKCoordinateSpan(
+            latitudeDelta: max((maxLat - minLat) * 1.4, 0.02),
+            longitudeDelta: max((maxLon - minLon) * 1.4, 0.02)
+        )
+        return MKCoordinateRegion(center: center, span: span)
+    }
+
+    private var mapView: some View {
+        Map(initialPosition: .region(mapRegion)) {
+            ForEach(mapEntries, id: \.entry.id) { item in
+                Annotation(item.entry.plateNumber, coordinate: item.coordinate) {
+                    Button {
+                        selectedEntry = item.entry
+                    } label: {
+                        VStack(spacing: 3) {
+                            Text(item.entry.plateNumber)
+                                .plType(PLTypeStyle(.bold, 10, trackingEm: 0.04))
+                                .foregroundStyle(PLColor.ink)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(PLColor.surface)
+                            Rectangle()
+                                .fill(PLColor.accentOnDark)
+                                .frame(width: 12, height: 12)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 

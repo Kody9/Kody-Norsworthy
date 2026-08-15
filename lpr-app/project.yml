@@ -15,7 +15,9 @@ targets:
         CFBundleDisplayName: Watchtower
         NSCameraUsageDescription: "Watchtower uses the camera to capture license plate photos for your personal log."
         NSLocationWhenInUseUsageDescription: "Watchtower records the location where each plate was captured."
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchIcon
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
