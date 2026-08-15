@@ -535,13 +535,14 @@ struct CaptureView: View {
         phase = .read
     }
 
-    private func saveEntry(plateText: String, tag: String, state: String) {
+    private func saveEntry(plateText: String, tag: String, state: String, driverName: String) {
         let entry = PlateEntry(
             plateNumber: plateText.uppercased(),
             state: state,
             latitude: capturedLocation?.coordinate.latitude,
             longitude: capturedLocation?.coordinate.longitude,
             tag: tag,
+            driverName: driverName.trimmingCharacters(in: .whitespaces),
             photoData: capturedImage?.jpegData(compressionQuality: 0.7)
         )
         modelContext.insert(entry)

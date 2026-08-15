@@ -12,6 +12,7 @@ final class PlateEntry {
     var longitude: Double?
     var notes: String
     var tag: String
+    var driverName: String
     @Attribute(.externalStorage) var photoData: Data?
 
     init(
@@ -23,6 +24,7 @@ final class PlateEntry {
         longitude: Double? = nil,
         notes: String = "",
         tag: String = "General",
+        driverName: String = "",
         photoData: Data? = nil
     ) {
         self.id = UUID()
@@ -34,6 +36,7 @@ final class PlateEntry {
         self.longitude = longitude
         self.notes = notes
         self.tag = tag
+        self.driverName = driverName
         self.photoData = photoData
     }
 }

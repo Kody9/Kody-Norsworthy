@@ -251,6 +251,7 @@ struct EntryDetailView: View {
                 get: { entry.vin ?? "" },
                 set: { entry.vin = $0.isEmpty ? nil : $0.uppercased() }
             ), autocapitalize: true)
+            fieldRow(label: "DRIVER", text: $entry.driverName)
             fieldRow(label: "NOTES", text: $entry.notes)
         }
         .padding(.top, PLSpacing.sm)

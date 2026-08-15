@@ -14,7 +14,7 @@ struct DayReportPageView: View {
     let totalPages: Int
 
     static let pageSize = CGSize(width: 900, height: 1166)
-    private let rowHeight: CGFloat = 150
+    private let rowHeight: CGFloat = 172
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -90,6 +90,11 @@ struct DayReportPageView: View {
                 Text("\(entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.6))
+                if !entry.driverName.isEmpty {
+                    Text("DRIVER: \(entry.driverName)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.7))
+                }
                 if let latitude = entry.latitude, let longitude = entry.longitude {
                     Text(String(format: "%.5f, %.5f", latitude, longitude))
                         .font(.system(size: 11, weight: .medium, design: .monospaced))

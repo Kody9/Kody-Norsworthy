@@ -6,7 +6,7 @@ enum CSVExporter {
     ///   filename so it reads as something you chose rather than a random
     ///   string. Omit for a plain timestamped export.
     static func export(_ entries: [PlateEntry], label: String? = nil) -> URL? {
-        var csv = "Plate Number,State,VIN,Captured At,Latitude,Longitude,Tag,Notes\n"
+        var csv = "Plate Number,State,VIN,Driver Name,Captured At,Latitude,Longitude,Tag,Notes\n"
         let formatter = ISO8601DateFormatter()
 
         for entry in entries {
@@ -17,6 +17,7 @@ enum CSVExporter {
                 entry.plateNumber,
                 entry.state,
                 entry.vin ?? "",
+                entry.driverName,
                 capturedAtText,
                 latitudeText,
                 longitudeText,

@@ -15,7 +15,7 @@ struct ReadEntryView: View {
     let detectedState: String?
     let isManualEntry: Bool
     @ObservedObject var photoZoomState: PhotoZoomState
-    let onSave: (String, String, String) -> Void
+    let onSave: (String, String, String, String) -> Void
     let onRetake: () -> Void
 
     @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var allEntries: [PlateEntry]
@@ -38,6 +38,7 @@ struct ReadEntryView: View {
     @State private var correctedText: String?
     @State private var correctedState: String?
     @State private var activeCover: ActiveCover?
+    @State private var driverName = ""
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -118,6 +119,7 @@ struct ReadEntryView: View {
                         alternateReads
                     }
                     tagSection
+                    driverNameSection
                 }
             }
             actionRow
@@ -371,6 +373,23 @@ struct ReadEntryView: View {
         }
     }
 
+    private var driverNameSection: some View {
+        VStack(alignment: .leading, spacing: PLSpacing.sm) {
+            Text("DRIVER NAME (OPTIONAL)").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+            TextField("", text: $driverName, prompt: Text("Not recorded").foregroundStyle(PLColor.inkTertiary))
+                .plType(PLTypeStyle(.medium, 14))
+                .foregroundStyle(PLColor.ink)
+                .textInputAutocapitalization(.words)
+                .padding(13)
+                .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
+        }
+        .padding(PLSpacing.md)
+        .padding(.horizontal, PLSpacing.xs)
+        .overlay(alignment: .top) {
+            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+        }
+    }
+
     private var actionRow: some View {
         HStack(spacing: 2) {
             PLPrimaryButton(
@@ -379,7 +398,7 @@ struct ReadEntryView: View {
                 isDisabled: displayedText == nil
             ) {
                 if let text = displayedText {
-                    onSave(text, selectedTag, displayedState)
+                    onSave(text, selectedTag, displayedState, driverName)
                 }
             }
             PLSecondaryButton(["RE", "SHOOT"], action: onRetake)

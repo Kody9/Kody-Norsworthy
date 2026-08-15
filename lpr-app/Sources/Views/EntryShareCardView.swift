@@ -27,6 +27,9 @@ struct EntryShareCardView: View {
                         .overlay(Rectangle().stroke(Color.black.opacity(0.15), lineWidth: 1))
                 }
 
+                if !entry.driverName.isEmpty {
+                    detailRow(label: "DRIVER", value: entry.driverName)
+                }
                 if let vin = entry.vin, !vin.isEmpty {
                     detailRow(label: "VIN", value: vin)
                 }
