@@ -64,6 +64,19 @@ private struct DaySection: Identifiable {
     let entries: [PlateEntry]
 }
 
+private enum MapDisplayMode: String, CaseIterable, Hashable {
+    case pins = "PINS"
+    case heatmap = "HEATMAP"
+}
+
+/// A cluster of nearby captures on the map, aggregated for heatmap
+/// mode. `coordinate` is the cluster's centroid, `count` how many
+/// captures fell into it.
+private struct HeatCell {
+    let coordinate: CLLocationCoordinate2D
+    let count: Int
+}
+
 struct HistoryListView: View {
     @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var entries: [PlateEntry]
     @Environment(\.modelContext) private var modelContext
@@ -81,6 +94,7 @@ struct HistoryListView: View {
     @State private var selectedIDs: Set<UUID> = []
     @State private var showBulkDeleteConfirmation = false
     @State private var isExportingMap = false
+    @State private var mapDisplayMode: MapDisplayMode = .pins
 
     /// Tag filter, date scope, and search applied — not yet sorted. The
     /// @Query itself is already newest-first, which `sortedFiltered` relies
@@ -208,13 +222,15 @@ struct HistoryListView: View {
                         .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
                         .foregroundStyle(PLColor.ink)
                 } else {
-                    Button(action: exportFiltered) {
+                    Menu {
+                        Button("Export CSV") { exportFilteredCSV() }
+                        Button("Export PDF Report") { exportFilteredPDF() }
+                    } label: {
                         Text("EXPORT")
                             .underline()
                             .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
                             .foregroundStyle(PLColor.ink)
                     }
-                    .buttonStyle(.plain)
                     .disabled(filtered.isEmpty)
                     .opacity(filtered.isEmpty ? 0.4 : 1)
 
@@ -319,8 +335,9 @@ struct HistoryListView: View {
             }
             .buttonStyle(.plain)
 
-            Button {
-                exportEntries(selectedEntriesList, label: "\(selectedIDs.count) Selected")
+            Menu {
+                Button("Export CSV") { exportEntriesCSV(selectedEntriesList, label: "\(selectedIDs.count) Selected") }
+                Button("Export PDF Report") { exportEntriesPDF(selectedEntriesList, label: "\(selectedIDs.count) Selected") }
             } label: {
                 Text("EXPORT · \(selectedIDs.count)")
                     .plType(PLTypeStyle(.bold, 13, trackingEm: 0.04))
@@ -328,7 +345,6 @@ struct HistoryListView: View {
                     .frame(maxWidth: .infinity, minHeight: 52)
                     .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
             }
-            .buttonStyle(.plain)
             .disabled(selectedIDs.isEmpty)
             .opacity(selectedIDs.isEmpty ? 0.4 : 1)
 
@@ -413,28 +429,76 @@ struct HistoryListView: View {
         return MKCoordinateRegion(center: center, span: span)
     }
 
+    /// Nearby captures grouped into clusters for heatmap mode. Bucket size
+    /// scales with the fitted region's span so clusters stay meaningful
+    /// whether the pins are spread across a city or clustered on one block.
+    private var heatmapCells: [HeatCell] {
+        let coordinates = mapEntries.map(\.coordinate)
+        guard !coordinates.isEmpty else { return [] }
+        let latBucket = max(mapRegion.span.latitudeDelta / 25, 0.0006)
+        let lonBucket = max(mapRegion.span.longitudeDelta / 25, 0.0006)
+
+        var sums: [String: (lat: Double, lon: Double, count: Int)] = [:]
+        for coordinate in coordinates {
+            let key = "\(Int((coordinate.latitude / latBucket).rounded()))_\(Int((coordinate.longitude / lonBucket).rounded()))"
+            var bucket = sums[key] ?? (lat: 0, lon: 0, count: 0)
+            bucket.lat += coordinate.latitude
+            bucket.lon += coordinate.longitude
+            bucket.count += 1
+            sums[key] = bucket
+        }
+        return sums.values.map { bucket in
+            HeatCell(
+                coordinate: CLLocationCoordinate2D(latitude: bucket.lat / Double(bucket.count), longitude: bucket.lon / Double(bucket.count)),
+                count: bucket.count
+            )
+        }
+    }
+
+    private var maxHeatCount: Int {
+        heatmapCells.map(\.count).max() ?? 1
+    }
+
+    private func heatRadius(for count: Int) -> CLLocationDistance {
+        90 * (1 + min(Double(count), 12) * 0.35)
+    }
+
+    private func heatOpacity(for count: Int) -> Double {
+        0.16 + 0.5 * (Double(count) / Double(max(maxHeatCount, 1)))
+    }
+
     private var mapView: some View {
         Map(initialPosition: .region(mapRegion)) {
-            ForEach(mapEntries, id: \.entry.id) { item in
-                Annotation(item.entry.plateNumber, coordinate: item.coordinate) {
-                    Button {
-                        selectedEntry = item.entry
-                    } label: {
-                        VStack(spacing: 3) {
-                            Text(item.entry.plateNumber)
-                                .plType(PLTypeStyle(.bold, 10, trackingEm: 0.04))
-                                .foregroundStyle(PLColor.ink)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(PLColor.surface)
-                            Rectangle()
-                                .fill(PLColor.accentOnDark)
-                                .frame(width: 12, height: 12)
+            if mapDisplayMode == .pins {
+                ForEach(mapEntries, id: \.entry.id) { item in
+                    Annotation(item.entry.plateNumber, coordinate: item.coordinate) {
+                        Button {
+                            selectedEntry = item.entry
+                        } label: {
+                            VStack(spacing: 3) {
+                                Text(item.entry.plateNumber)
+                                    .plType(PLTypeStyle(.bold, 10, trackingEm: 0.04))
+                                    .foregroundStyle(PLColor.ink)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(PLColor.surface)
+                                Rectangle()
+                                    .fill(PLColor.accentOnDark)
+                                    .frame(width: 12, height: 12)
+                            }
                         }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                }
+            } else {
+                ForEach(Array(heatmapCells.enumerated()), id: \.offset) { _, cell in
+                    MapCircle(center: cell.coordinate, radius: heatRadius(for: cell.count))
+                        .foregroundStyle(PLColor.accentOnDark.opacity(heatOpacity(for: cell.count)))
                 }
             }
+        }
+        .overlay(alignment: .topLeading) {
+            mapModeToggle
         }
         .overlay(alignment: .bottomTrailing) {
             Button(action: shareMapSnapshot) {
@@ -452,10 +516,34 @@ struct HistoryListView: View {
         }
     }
 
+    private var mapModeToggle: some View {
+        HStack(spacing: 1) {
+            ForEach(MapDisplayMode.allCases, id: \.self) { mode in
+                let isActive = mode == mapDisplayMode
+                Button {
+                    mapDisplayMode = mode
+                } label: {
+                    Text(mode.rawValue)
+                        .plType(PLTypeStyle(isActive ? .heavy : .semibold, 10, trackingEm: 0.08))
+                        .foregroundStyle(isActive ? .white : PLColor.ink)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(isActive ? PLColor.accent : PLColor.groundNight.opacity(0.82))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(PLSpacing.gutter)
+    }
+
     private func shareMapSnapshot() {
         isExportingMap = true
-        let pins = mapEntries.map { MapExporter.Pin(coordinate: $0.coordinate) }
-        MapExporter.exportSnapshot(region: mapRegion, pins: pins) { url in
+        MapExporter.exportSnapshot(
+            region: mapRegion,
+            overlay: mapDisplayMode == .pins
+                ? .pins(mapEntries.map { MapExporter.Pin(coordinate: $0.coordinate) })
+                : .heatmap(heatmapCells.map { MapExporter.HeatCell(coordinate: $0.coordinate, count: $0.count, maxCount: maxHeatCount) })
+        ) { url in
             isExportingMap = false
             guard let url else { return }
             shareFile = ShareableFile(url: url)
@@ -467,15 +555,15 @@ struct HistoryListView: View {
             Text(section.label).plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
             Text("· \(section.entries.count)").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
             Spacer()
-            Button {
-                exportEntries(section.entries, label: section.label)
+            Menu {
+                Button("Export CSV") { exportEntriesCSV(section.entries, label: section.label) }
+                Button("Export PDF Report") { exportEntriesPDF(section.entries, label: section.label) }
             } label: {
                 Text("EXPORT")
                     .underline()
                     .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
                     .foregroundStyle(PLColor.ink)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, PLSpacing.gutter)
         .padding(.top, 14)
@@ -536,15 +624,24 @@ struct HistoryListView: View {
         modelContext.delete(entry)
     }
 
-    private func exportEntries(_ list: [PlateEntry], label: String? = nil) {
+    private func exportEntriesCSV(_ list: [PlateEntry], label: String? = nil) {
         guard let url = CSVExporter.export(list, label: label) else { return }
+        shareFile = ShareableFile(url: url)
+    }
+
+    private func exportEntriesPDF(_ list: [PlateEntry], label: String) {
+        guard let url = DayReportExporter.makePDF(entries: list, label: label) else { return }
         shareFile = ShareableFile(url: url)
     }
 
     /// Exports whatever's currently on screen — tag filter, date scope,
     /// search, and sort all narrow this, same as the visible list.
-    private func exportFiltered() {
-        exportEntries(sortedFiltered, label: dateScope == .all ? nil : dateScope.label)
+    private func exportFilteredCSV() {
+        exportEntriesCSV(sortedFiltered, label: dateScope == .all ? nil : dateScope.label)
+    }
+
+    private func exportFilteredPDF() {
+        exportEntriesPDF(sortedFiltered, label: dateScope == .all ? "All Entries" : dateScope.label)
     }
 }
 
