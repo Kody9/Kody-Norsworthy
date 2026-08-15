@@ -14,4 +14,8 @@ enum Haptics {
     static func queued() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
+
+    static func boloMatch() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
 }

@@ -84,6 +84,21 @@ struct ReadEntryView: View {
         return "ALREADY LOGGED \(relative.uppercased()) — TAGGED \(entry.tag.uppercased())"
     }
 
+    /// Turns BOLO from a passive label into an active watch list: any
+    /// existing entry tagged BOLO for this exact plate, checked
+    /// independently of `priorSighting` (which only surfaces the single
+    /// most recent match regardless of tag, so an older BOLO-tagged
+    /// sighting could otherwise get buried behind a newer non-BOLO one).
+    private var boloMatch: PlateEntry? {
+        guard let text = displayedText?.uppercased(), !text.isEmpty else { return nil }
+        return allEntries.first { $0.plateNumber == text && $0.tag == "BOLO" }
+    }
+
+    private func boloMatchMessage(_ entry: PlateEntry) -> String {
+        let relative = Self.relativeFormatter.localizedString(for: entry.capturedAt, relativeTo: .now)
+        return "BOLO MATCH — LOGGED \(relative.uppercased())"
+    }
+
     /// Once zoomed in on this photo (here or from the correction editor),
     /// show that same zoomed-in crop in the strip instead of the full
     /// un-zoomed frame — no need to re-zoom just to keep looking at it.
@@ -136,6 +151,11 @@ struct ReadEntryView: View {
                 if let image {
                     PhotoZoomView(image: image, zoomState: photoZoomState, onDone: { activeCover = nil })
                 }
+            }
+        }
+        .task(id: boloMatch?.id) {
+            if boloMatch != nil {
+                Haptics.boloMatch()
             }
         }
     }
@@ -228,7 +248,15 @@ struct ReadEntryView: View {
                     .padding(.top, 10)
             }
 
-            if let priorSighting {
+            if let boloMatch {
+                Text(boloMatchMessage(boloMatch))
+                    .plType(PLTypeStyle(.heavy, 12, trackingEm: 0.04))
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PLColor.accent)
+                    .padding(.top, 10)
+            } else if let priorSighting {
                 Text(priorSightingMessage(priorSighting))
                     .plType(PLTypeStyle(.bold, 11, trackingEm: 0.04))
                     .foregroundStyle(PLColor.ink)

@@ -30,6 +30,9 @@ struct CaptureView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var camera = CameraController()
     @StateObject private var locationService = LocationService()
+    /// Only for the BOLO watch-list check on the queue's quick-log path,
+    /// which bypasses the Read screen (and its own BOLO check) entirely.
+    @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var allEntries: [PlateEntry]
 
     @State private var phase: CapturePhase = .camera
     @State private var isReading = false
@@ -471,9 +474,14 @@ struct CaptureView: View {
     /// the full Read screen; nothing here bypasses that.
     private func quickLog(_ detection: PendingDetection) {
         guard let text = detection.candidates.first?.text, !text.isEmpty else { return }
+        let plateNumber = text.uppercased()
         pendingDetections.removeAll { $0.id == detection.id }
+        // Checked before inserting, since this path never shows the Read
+        // screen (and its own BOLO banner) at all -- a haptic warning here
+        // is the only signal this plate matched a watch-listed one.
+        let matchesBOLO = allEntries.contains { $0.plateNumber == plateNumber && $0.tag == "BOLO" }
         let entry = PlateEntry(
-            plateNumber: text.uppercased(),
+            plateNumber: plateNumber,
             state: detection.detectedState ?? "Unknown",
             latitude: detection.location?.coordinate.latitude,
             longitude: detection.location?.coordinate.longitude,
@@ -481,7 +489,7 @@ struct CaptureView: View {
             photoData: detection.image?.jpegData(compressionQuality: 0.7)
         )
         modelContext.insert(entry)
-        Haptics.logged()
+        matchesBOLO ? Haptics.boloMatch() : Haptics.logged()
     }
 
     /// Pulls one specific queued detection (picked from the triage list)

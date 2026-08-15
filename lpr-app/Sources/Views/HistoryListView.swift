@@ -80,6 +80,7 @@ struct HistoryListView: View {
     @State private var isSelecting = false
     @State private var selectedIDs: Set<UUID> = []
     @State private var showBulkDeleteConfirmation = false
+    @State private var isExportingMap = false
 
     /// Tag filter, date scope, and search applied — not yet sorted. The
     /// @Query itself is already newest-first, which `sortedFiltered` relies
@@ -434,6 +435,30 @@ struct HistoryListView: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Button(action: shareMapSnapshot) {
+                Text(isExportingMap ? "PREPARING…" : "SHARE MAP")
+                    .plType(PLTypeStyle(.bold, 11, trackingEm: 0.06))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(PLColor.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(isExportingMap || mapEntries.isEmpty)
+            .opacity(mapEntries.isEmpty ? 0.5 : 1)
+            .padding(PLSpacing.gutter)
+        }
+    }
+
+    private func shareMapSnapshot() {
+        isExportingMap = true
+        let pins = mapEntries.map { MapExporter.Pin(coordinate: $0.coordinate) }
+        MapExporter.exportSnapshot(region: mapRegion, pins: pins) { url in
+            isExportingMap = false
+            guard let url else { return }
+            shareFile = ShareableFile(url: url)
         }
     }
 

@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("hasAcceptedDisclaimer") private var hasAcceptedDisclaimer = true
     @AppStorage("retentionDays") private var retentionDays = 30
     @AppStorage("autoScanFastMode") private var autoScanFastMode = true
+    @AppStorage("appLockEnabled") private var appLockEnabled = false
 
     @State private var shareFile: ShareableFile?
     @State private var showClearConfirmation = false
@@ -73,6 +74,23 @@ struct SettingsView: View {
                 Text(autoScanFastMode
                     ? "Trusts a single frame's read immediately — catches more cars, including fast-moving ones, at the cost of more wrong reads to correct."
                     : "Waits for the same reading twice within a few seconds before queuing it — fewer wrong reads, but a car only in frame briefly may not get caught at all.")
+                    .plType(.body)
+                    .foregroundStyle(PLColor.inkTertiary)
+                    .padding(.horizontal, PLSpacing.gutter)
+                    .padding(.top, 8)
+                    .padding(.bottom, PLSpacing.gutter)
+
+                sectionLabel("PRIVACY")
+                row {
+                    HStack {
+                        Text("App Lock").plType(.rowLabel).foregroundStyle(PLColor.inkSecondary)
+                        Spacer()
+                        Toggle("", isOn: $appLockEnabled)
+                            .labelsHidden()
+                            .tint(PLColor.accentOnDark)
+                    }
+                }
+                Text("Requires Face ID, Touch ID, or your device passcode to open Watchtower — every time it's brought back to the foreground, not just on cold launch.")
                     .plType(.body)
                     .foregroundStyle(PLColor.inkTertiary)
                     .padding(.horizontal, PLSpacing.gutter)
