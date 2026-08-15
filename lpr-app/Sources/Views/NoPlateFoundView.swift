@@ -54,6 +54,7 @@ struct NoPlateFoundView: View {
                     .frame(height: 200)
                     .frame(maxWidth: .infinity)
                     .clipped()
+                    .contentShape(Rectangle())
                     .overlay(alignment: .bottom) {
                         Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
                     }

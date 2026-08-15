@@ -150,6 +150,7 @@ struct EntryDetailView: View {
         .disabled(photoImage == nil)
         .frame(maxHeight: 220)
         .clipped()
+        .contentShape(Rectangle())
     }
 
     private func map(latitude: Double, longitude: Double) -> some View {

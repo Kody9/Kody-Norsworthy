@@ -27,7 +27,7 @@ struct ReadEntryView: View {
     /// (exactly what happens coming from the queue list's REVIEW), which
     /// was opening the photo zoom instead of the correction editor. Only
     /// one cover can ever be "the" active one this way.
-    private enum ActiveCover: Identifiable {
+    private enum ActiveCover: Identifiable, Hashable {
         case correctionEditor
         case statePicker
         case zoomedPhoto
@@ -176,6 +176,13 @@ struct ReadEntryView: View {
         .frame(height: 150)
         .frame(maxWidth: .infinity)
         .clipped()
+        // Without this, the button's tappable area follows the greedy,
+        // unclamped size its ZStack label wants (the image inside asks for
+        // maxWidth/maxHeight .infinity, and a ScrollView proposes near-
+        // unbounded height) rather than the 150pt frame actually drawn on
+        // screen -- so taps meant for content below (like the correction
+        // button) were landing on this button instead.
+        .contentShape(Rectangle())
     }
 
     private var readBlock: some View {

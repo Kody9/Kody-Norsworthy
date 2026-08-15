@@ -201,6 +201,12 @@ struct ManualEntryView: View {
             .frame(height: 110)
             .frame(maxWidth: .infinity)
             .clipped()
+            // Without this, the button's tappable area follows its ZStack
+            // label's unclamped natural size (the image inside wants
+            // maxWidth/maxHeight .infinity) rather than the 110pt frame
+            // actually drawn -- which, sitting right above the keyboard
+            // grid, could swallow taps meant for the keys below it.
+            .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
                 Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
             }

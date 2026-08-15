@@ -74,6 +74,7 @@ struct HistoryListView: View {
     @State private var customRangeEnd: Date = .now
     @State private var selectedEntry: PlateEntry?
     @State private var shareFile: ShareableFile?
+    @State private var entryPendingDeletion: PlateEntry?
 
     /// Tag filter, date scope, and search applied — not yet sorted. The
     /// @Query itself is already newest-first, which `sortedFiltered` relies
@@ -148,6 +149,22 @@ struct HistoryListView: View {
                 },
                 onCancel: { showCustomRangeSheet = false }
             )
+        }
+        .alert(
+            "Delete This Entry?",
+            isPresented: Binding(
+                get: { entryPendingDeletion != nil },
+                set: { if !$0 { entryPendingDeletion = nil } }
+            ),
+            presenting: entryPendingDeletion
+        ) { entry in
+            Button("Delete", role: .destructive) {
+                delete(entry)
+                entryPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { entryPendingDeletion = nil }
+        } message: { entry in
+            Text("This permanently deletes \(entry.plateNumber) from this device. This cannot be undone.")
         }
     }
 
@@ -290,14 +307,18 @@ struct HistoryListView: View {
     }
 
     private func entryRow(_ entry: PlateEntry) -> some View {
-        EntryRow(entry: entry, repeatCount: repeatCount(for: entry))
-            .contentShape(Rectangle())
-            .onTapGesture { selectedEntry = entry }
-            .swipeActions {
-                Button(role: .destructive) { delete(entry) } label: {
-                    Label("Delete", systemImage: "trash")
-                }
+        EntryRow(
+            entry: entry,
+            repeatCount: repeatCount(for: entry),
+            onDelete: { entryPendingDeletion = entry }
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { selectedEntry = entry }
+        .swipeActions {
+            Button(role: .destructive) { delete(entry) } label: {
+                Label("Delete", systemImage: "trash")
             }
+        }
     }
 
     private func repeatCount(for entry: PlateEntry) -> Int {
@@ -324,6 +345,7 @@ struct HistoryListView: View {
 private struct EntryRow: View {
     let entry: PlateEntry
     let repeatCount: Int
+    let onDelete: () -> Void
 
     private var meta: String {
         let time = entry.capturedAt.formatted(date: .omitted, time: .shortened)
@@ -355,6 +377,15 @@ private struct EntryRow: View {
             Text(entry.tag == "Parking Complaint" ? "PARKING" : entry.tag.uppercased())
                 .plType(PLTypeStyle(.bold, 11, trackingEm: 0.04))
                 .foregroundStyle(entry.tag == "BOLO" ? PLColor.accentOnDark : PLColor.inkTertiary)
+
+            Button(action: onDelete) {
+                Text("DELETE")
+                    .underline()
+                    .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
+                    .foregroundStyle(PLColor.inkTertiary)
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 4)
         }
         .padding(.vertical, 14)
         .padding(.horizontal, PLSpacing.gutter)
