@@ -13,6 +13,11 @@ final class PlateEntry {
     var notes: String
     var tag: String
     var driverName: String
+    /// Who logged this, when it came from (or was pushed to) a shared
+    /// group -- see GroupSyncService. Empty for an ordinary local entry
+    /// on a device that's never joined a group, so solo use looks exactly
+    /// as it always has.
+    var loggedByName: String
     @Attribute(.externalStorage) var photoData: Data?
 
     init(
@@ -25,6 +30,7 @@ final class PlateEntry {
         notes: String = "",
         tag: String = "General",
         driverName: String = "",
+        loggedByName: String = "",
         photoData: Data? = nil
     ) {
         self.id = UUID()
@@ -37,6 +43,7 @@ final class PlateEntry {
         self.notes = notes
         self.tag = tag
         self.driverName = driverName
+        self.loggedByName = loggedByName
         self.photoData = photoData
     }
 }

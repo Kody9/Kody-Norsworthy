@@ -61,6 +61,12 @@ struct DayReportPageView: View {
         .padding(.vertical, 24)
     }
 
+    private func stateTimeLine(for entry: PlateEntry) -> String {
+        let base = "\(entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened))"
+        guard !entry.loggedByName.isEmpty else { return base }
+        return "\(base) · LOGGED BY \(entry.loggedByName.uppercased())"
+    }
+
     private func row(for entry: PlateEntry) -> some View {
         HStack(alignment: .top, spacing: 18) {
             Group {
@@ -87,7 +93,7 @@ struct DayReportPageView: View {
                             .foregroundStyle(entry.tag == "BOLO" ? Color(red: 0xEC / 255, green: 0x30 / 255, blue: 0x13 / 255) : Color.black.opacity(0.5))
                     }
                 }
-                Text("\(entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened))")
+                Text(stateTimeLine(for: entry))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.6))
                 if !entry.driverName.isEmpty {

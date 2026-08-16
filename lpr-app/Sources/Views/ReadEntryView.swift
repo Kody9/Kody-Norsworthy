@@ -82,7 +82,8 @@ struct ReadEntryView: View {
 
     private func priorSightingMessage(_ entry: PlateEntry) -> String {
         let relative = Self.relativeFormatter.localizedString(for: entry.capturedAt, relativeTo: .now)
-        return "ALREADY LOGGED \(relative.uppercased()) — TAGGED \(entry.tag.uppercased())"
+        let by = entry.loggedByName.isEmpty ? "" : " BY \(entry.loggedByName.uppercased())"
+        return "ALREADY LOGGED\(by) \(relative.uppercased()) — TAGGED \(entry.tag.uppercased())"
     }
 
     /// Turns BOLO from a passive label into an active watch list: any
@@ -97,7 +98,8 @@ struct ReadEntryView: View {
 
     private func boloMatchMessage(_ entry: PlateEntry) -> String {
         let relative = Self.relativeFormatter.localizedString(for: entry.capturedAt, relativeTo: .now)
-        return "BOLO MATCH — LOGGED \(relative.uppercased())"
+        let by = entry.loggedByName.isEmpty ? "" : " BY \(entry.loggedByName.uppercased())"
+        return "BOLO MATCH — LOGGED\(by) \(relative.uppercased())"
     }
 
     /// Once zoomed in on this photo (here or from the correction editor),

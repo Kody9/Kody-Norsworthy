@@ -2,7 +2,9 @@
 
 A personal license-plate quick-capture app for iPhone: point the camera at a
 plate, on-device OCR reads it, you confirm it, and it's saved locally with a
-timestamp, GPS location, and a photo. Nothing ever leaves the device.
+timestamp, GPS location, and a photo. By default nothing ever leaves the
+device — optional group sync (see below) is the one exception, and only
+syncs the text fields, never photos.
 
 ## What this app does — and deliberately does not do
 
@@ -14,6 +16,16 @@ timestamp, GPS location, and a photo. Nothing ever leaves the device.
   single day), and a "clear all data" option.
 - **Past sightings**: an entry's detail screen shows every other time that
   exact plate has been logged, tap one to jump straight to it.
+- **Group sync (optional, off by default)**: Setup → GROUP lets a trusted
+  group of people (e.g. family/friends who also run this app) share a
+  single log. Everyone types the same group code and a display name — no
+  accounts, no login screen. Once joined, entries anyone in the group logs
+  (plate, state, tag, notes, driver name, time, location — never photos)
+  sync to everyone else's phone and merge into their local History, so the
+  existing duplicate/BOLO-match banners on the Read screen catch a plate a
+  groupmate already logged, not just ones you logged yourself. Requires a
+  Firebase project you set up yourself — see "Group sync setup" below. The
+  app works completely normally, fully local, without ever doing this.
 - **No plate-to-owner lookup, ever.** DMV registration records are protected
   by the federal Driver's Privacy Protection Act (and most state equivalents).
   There is no legitimate public API that maps a plate to an owner's identity,
@@ -51,6 +63,7 @@ lpr-app/
       LocationService.swift    CoreLocation wrapper
       OwnerLookupProvider.swift  Unimplemented extension point (see above)
       CSVExporter.swift        Export entries to CSV
+      GroupSyncService.swift   Optional Firebase-backed group sync (see below)
     Views/
       ContentView.swift, CaptureView.swift, ConfirmEntryView.swift,
       HistoryListView.swift, EntryDetailView.swift, SettingsView.swift,
@@ -96,6 +109,61 @@ open PlateLog.xcodeproj
   position), if you just want to test the UI flow before deploying to your
   phone.
 
+## Group sync setup (optional)
+
+Skip this whole section if you only ever want SAL fully local on one
+phone — everything above works with zero setup. This is only needed to
+turn on Setup → GROUP.
+
+SAL doesn't ship with a backend of its own; it talks to a Firebase project
+you create and own. Nobody but the people you give the group code to can
+read or write your group's data.
+
+1. **Create a Firebase project.** Go to
+   [console.firebase.google.com](https://console.firebase.google.com),
+   create a new project (any name — e.g. "SAL Group Log"). You don't need
+   Google Analytics for this; you can decline it.
+2. **Add an iOS app to the project.** In the project's settings, add an
+   iOS app. The **bundle ID must exactly match**
+   `com.kodynorsworthy.platelog` (from `project.yml`) or the app won't be
+   able to find its configuration.
+3. **Download `GoogleService-Info.plist`** from that step, and drop the
+   file into `lpr-app/Sources/` in this repo (same folder as
+   `PlateLogApp.swift`). XcodeGen's `sources: [Sources]` picks up any file
+   in that tree automatically — no `project.yml` change needed. Re-run
+   `xcodegen generate` after adding it.
+4. **Enable Anonymous authentication.** In the Firebase console: Build →
+   Authentication → Sign-in method → enable **Anonymous**. SAL uses this
+   silently (no login screen) purely so Firestore's security rules below
+   have a `request.auth` to check — it's not tied to anyone's real
+   identity.
+5. **Create a Firestore database.** Build → Firestore Database → Create
+   database. Any region is fine; start in production mode (the rules
+   below replace the defaults either way).
+6. **Paste in these security rules** (Firestore Database → Rules):
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /groups/{groupCode}/entries/{entryId} {
+         allow read, write: if request.auth != null;
+       }
+     }
+   }
+   ```
+   This means: anyone who has the app installed and knows a group's code
+   can read and write that group's entries, and nothing else. There's no
+   per-person access control beyond the code itself — same trust model as
+   a shared Wi-Fi password. Pick group codes accordingly (not `"1234"`).
+7. **Rebuild and run.** Setup → GROUP will go from "add
+   GoogleService-Info.plist" to a real join form once the app finds that
+   file in its bundle.
+
+Photos never sync, in either direction — only plate, state, VIN, driver
+name, notes, tag, timestamp, and location. Deleting an entry only deletes
+it on your own device; it isn't removed from the group or from anyone
+else's copy (no delete-sync in this first pass).
+
 ## Known limitations
 
 - The OCR plate-candidate filter is a simple heuristic (4–8 alphanumeric
@@ -104,3 +172,7 @@ open PlateLog.xcodeproj
   the suggested text before saving; that's why the confirm screen exists.
 - VIN capture is manual entry only (no VIN-plate OCR, and no VIN decode
   lookup) — it's just a note field.
+- Group sync is one-way-append only: new entries push and pull, but an
+  edit (e.g. correcting a plate after the fact) or a delete only applies
+  on the device that made it, not across the group. Editing a plate on a
+  synced entry is local-only until this is addressed.

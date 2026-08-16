@@ -28,11 +28,14 @@ struct PendingDetection: Identifiable {
 
 struct CaptureView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var syncService: GroupSyncService
     @StateObject private var camera = CameraController()
     @StateObject private var locationService = LocationService()
     /// Only for the BOLO watch-list check on the queue's quick-log path,
     /// which bypasses the Read screen (and its own BOLO check) entirely.
     @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var allEntries: [PlateEntry]
+    @AppStorage("groupCode") private var groupCode = ""
+    @AppStorage("displayName") private var displayName = ""
 
     @State private var phase: CapturePhase = .camera
     @State private var isReading = false
@@ -495,9 +498,11 @@ struct CaptureView: View {
             latitude: detection.location?.coordinate.latitude,
             longitude: detection.location?.coordinate.longitude,
             tag: "BOLO",
+            loggedByName: groupCode.isEmpty ? "" : displayName,
             photoData: detection.image?.jpegData(compressionQuality: 0.7)
         )
         modelContext.insert(entry)
+        syncService.push(entry, groupCode: groupCode)
         matchesBOLO ? Haptics.boloMatch() : Haptics.logged()
     }
 
@@ -552,9 +557,11 @@ struct CaptureView: View {
             longitude: capturedLocation?.coordinate.longitude,
             tag: tag,
             driverName: driverName.trimmingCharacters(in: .whitespaces),
+            loggedByName: groupCode.isEmpty ? "" : displayName,
             photoData: capturedImage?.jpegData(compressionQuality: 0.7)
         )
         modelContext.insert(entry)
+        syncService.push(entry, groupCode: groupCode)
         Haptics.logged()
 
         savedPlateText = plateText.uppercased()

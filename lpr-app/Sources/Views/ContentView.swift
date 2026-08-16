@@ -6,7 +6,9 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("retentionDays") private var retentionDays = 30
     @AppStorage("appLockEnabled") private var appLockEnabled = false
+    @AppStorage("groupCode") private var groupCode = ""
     @StateObject private var lockService = AppLockService()
+    @StateObject private var syncService = GroupSyncService()
     @State private var selectedTab: PLTab = .capture
 
     var body: some View {
@@ -21,10 +23,16 @@ struct ContentView: View {
                 }
             }
         }
+        .environmentObject(syncService)
         .background(PLColor.ground.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .task {
             RetentionService.purgeExpiredEntries(context: modelContext, retentionDays: retentionDays)
+            // Resumes an already-joined group on every launch -- joining
+            // itself happens from Setup's GROUP section.
+            if !groupCode.isEmpty {
+                syncService.start(groupCode: groupCode, context: modelContext)
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background, appLockEnabled {

@@ -8,13 +8,19 @@ import UIKit
 struct SettingsView: View {
     @Query private var entries: [PlateEntry]
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var syncService: GroupSyncService
     @AppStorage("hasAcceptedDisclaimer") private var hasAcceptedDisclaimer = true
     @AppStorage("retentionDays") private var retentionDays = 30
     @AppStorage("autoScanFastMode") private var autoScanFastMode = true
     @AppStorage("appLockEnabled") private var appLockEnabled = false
+    @AppStorage("groupCode") private var groupCode = ""
+    @AppStorage("displayName") private var displayName = ""
 
     @State private var shareFile: ShareableFile?
     @State private var showClearConfirmation = false
+    @State private var showLeaveConfirmation = false
+    @State private var groupCodeDraft = ""
+    @State private var displayNameDraft = ""
 
     private let retentionOptions = [7, 14, 30, 60, 90, 0]
 
@@ -97,6 +103,8 @@ struct SettingsView: View {
                     .padding(.top, 8)
                     .padding(.bottom, PLSpacing.gutter)
 
+                groupSection
+
                 sectionLabel("ABOUT")
                 actionRow("View Usage Disclaimer") {
                     hasAcceptedDisclaimer = false
@@ -118,6 +126,123 @@ struct SettingsView: View {
         } message: {
             Text("This permanently deletes all captured plate entries from this device. This cannot be undone.")
         }
+        .alert("Leave This Group?", isPresented: $showLeaveConfirmation) {
+            Button("Leave", role: .destructive, action: leaveGroup)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You'll stop receiving new entries from the group, and it'll stop receiving yours. Entries already synced to this device stay in your History.")
+        }
+        .onAppear {
+            groupCodeDraft = groupCode
+            displayNameDraft = displayName
+        }
+    }
+
+    private var canJoin: Bool {
+        !groupCodeDraft.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !displayNameDraft.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    @ViewBuilder
+    private var groupSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("GROUP")
+
+            if !syncService.isFirebaseConfigured {
+                Text("Not set up yet — add GoogleService-Info.plist to the Xcode project to enable syncing with a group. See the README for setup steps.")
+                    .plType(.body)
+                    .foregroundStyle(PLColor.inkTertiary)
+                    .padding(.horizontal, PLSpacing.gutter)
+                    .padding(.bottom, PLSpacing.gutter)
+            } else if groupCode.isEmpty {
+                groupJoinForm
+            } else {
+                groupStatusRow
+            }
+        }
+    }
+
+    private var groupJoinForm: some View {
+        VStack(alignment: .leading, spacing: PLSpacing.md) {
+            Text("Share captures with a group of people who also have SAL — everyone sees each other's plates, notes, and tags (not photos), and gets flagged if someone else already logged the same plate.")
+                .plType(.body)
+                .foregroundStyle(PLColor.inkTertiary)
+
+            labeledField("YOUR NAME", text: $displayNameDraft)
+            labeledField("GROUP CODE", text: $groupCodeDraft)
+
+            Text("Anyone with this code can join and see the group's data — share it only with people you trust, the same way you'd share a Wi-Fi password.")
+                .plType(PLTypeStyle(.medium, 11))
+                .foregroundStyle(PLColor.inkTertiary)
+
+            PLBlockButton("JOIN GROUP", filled: true, height: 52, action: joinGroup)
+                .disabled(!canJoin)
+                .opacity(canJoin ? 1 : 0.4)
+        }
+        .padding(.horizontal, PLSpacing.gutter)
+        .padding(.bottom, PLSpacing.gutter)
+    }
+
+    private var groupStatusRow: some View {
+        VStack(alignment: .leading, spacing: PLSpacing.md) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("GROUP CODE").plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+                    Text(groupCode).plType(PLTypeStyle(.heavy, 18)).foregroundStyle(PLColor.ink)
+                }
+                Spacer()
+                Text(syncService.isActive ? "CONNECTED" : "CONNECTING…")
+                    .plType(PLTypeStyle(.bold, 10, trackingEm: 0.08))
+                    .foregroundStyle(syncService.isActive ? .white : PLColor.inkTertiary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(syncService.isActive ? PLColor.accent : PLColor.surface)
+            }
+            Text("Logging in as \(displayName.isEmpty ? "—" : displayName)")
+                .plType(.body)
+                .foregroundStyle(PLColor.inkTertiary)
+            if let lastError = syncService.lastError {
+                Text(lastError)
+                    .plType(PLTypeStyle(.medium, 11))
+                    .foregroundStyle(PLColor.accentOnDark)
+            }
+            Button {
+                showLeaveConfirmation = true
+            } label: {
+                Text("LEAVE GROUP")
+                    .underline()
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                    .foregroundStyle(PLColor.accentOnDark)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, PLSpacing.gutter)
+        .padding(.bottom, PLSpacing.gutter)
+    }
+
+    private func labeledField(_ label: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).plType(.sectionLabel).foregroundStyle(PLColor.inkTertiary)
+            TextField("", text: text)
+                .plType(PLTypeStyle(.medium, 14))
+                .foregroundStyle(PLColor.ink)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled(true)
+                .padding(13)
+                .overlay(Rectangle().stroke(PLColor.fieldBorderStrong, lineWidth: PLSpacing.ruleWidth))
+        }
+    }
+
+    private func joinGroup() {
+        guard canJoin else { return }
+        displayName = displayNameDraft.trimmingCharacters(in: .whitespaces)
+        groupCode = groupCodeDraft.trimmingCharacters(in: .whitespaces)
+        syncService.start(groupCode: groupCode, context: modelContext)
+    }
+
+    private func leaveGroup() {
+        syncService.stop()
+        groupCode = ""
     }
 
     private func sectionLabel(_ text: String) -> some View {

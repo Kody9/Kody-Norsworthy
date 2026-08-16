@@ -1,3 +1,4 @@
+import FirebaseCore
 import SwiftData
 import SwiftUI
 
@@ -5,6 +6,17 @@ import SwiftUI
 struct PlateLogApp: App {
     @AppStorage("hasAcceptedDisclaimer") private var hasAcceptedDisclaimer = false
     private let container = PlateLogApp.makeContainer()
+
+    init() {
+        // FirebaseApp.configure() itself crashes if GoogleService-Info.plist
+        // isn't in the bundle, so group sync (an optional, opt-in feature --
+        // see Setup's GROUP section) is only turned on when that file has
+        // actually been added to the Xcode project. Everything else about
+        // the app works identically without it.
+        if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
+            FirebaseApp.configure()
+        }
+    }
 
     var body: some Scene {
         WindowGroup {

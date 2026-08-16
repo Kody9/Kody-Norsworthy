@@ -32,6 +32,12 @@ struct EntryDetailView: View {
         entry.state.isEmpty ? "UNKNOWN" : entry.state.uppercased()
     }
 
+    private var metaLine: String {
+        let base = "\(displayState) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.tag.uppercased())"
+        guard !entry.loggedByName.isEmpty else { return base }
+        return "\(base) · LOGGED BY \(entry.loggedByName.uppercased())"
+    }
+
     /// Every other logged entry for this exact plate, most recent first.
     private var pastSightings: [PlateEntry] {
         allEntries.filter { $0.plateNumber == entry.plateNumber && $0.id != entry.id }
@@ -145,7 +151,7 @@ struct EntryDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text("\(displayState) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.tag.uppercased())")
+            Text(metaLine)
                 .plType(PLTypeStyle(.semibold, 12, trackingEm: 0.08))
                 .foregroundStyle(PLColor.inkTertiary)
         }
@@ -236,6 +242,12 @@ struct EntryDetailView: View {
         }
     }
 
+    private func sightingSubtitle(_ sighting: PlateEntry) -> String {
+        let state = sighting.state.isEmpty ? "UNKNOWN" : sighting.state.uppercased()
+        guard !sighting.loggedByName.isEmpty else { return state }
+        return "\(state) · BY \(sighting.loggedByName.uppercased())"
+    }
+
     private func sightingRow(_ sighting: PlateEntry) -> some View {
         Button {
             onSelectEntry(sighting)
@@ -245,7 +257,7 @@ struct EntryDetailView: View {
                     Text(sighting.capturedAt.formatted(date: .abbreviated, time: .shortened))
                         .plType(.linkRow)
                         .foregroundStyle(PLColor.ink)
-                    Text(sighting.state.isEmpty ? "UNKNOWN" : sighting.state.uppercased())
+                    Text(sightingSubtitle(sighting))
                         .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
                         .foregroundStyle(PLColor.inkTertiary)
                 }
