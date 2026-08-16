@@ -161,20 +161,20 @@ struct CaptureView: View {
                 // swipe zone at the very top edge) even though the camera
                 // feed behind them bleeds full-screen.
                 VStack {
-                    HStack {
+                    HStack(alignment: .top) {
+                        Text("LIVE CAMERA · REAR WIDE\nHOLD PLATE INSIDE THE MARKS")
+                            .plType(.technicalCaption)
+                            .foregroundStyle(PLColor.inkTertiary)
+                            .lineSpacing(3)
                         Spacer()
                         VStack(alignment: .trailing, spacing: 8) {
                             autoScanToggle
                             reviewQueueButton
                         }
-                        .padding(PLSpacing.gutter)
                     }
+                    .padding(PLSpacing.gutter)
                     Spacer()
-                    HStack(alignment: .bottom) {
-                        Text("LIVE CAMERA · REAR WIDE\nHOLD PLATE INSIDE THE MARKS")
-                            .plType(.technicalCaption)
-                            .foregroundStyle(PLColor.inkTertiary)
-                            .lineSpacing(3)
+                    HStack {
                         Spacer()
                         zoomControls
                     }
@@ -255,32 +255,41 @@ struct CaptureView: View {
         }
     }
 
+    /// A live reading plus tap-to-snap presets, pinch still free-zooms
+    /// between them. 44pt touch targets (Apple's minimum) instead of the
+    /// original 34pt, with the active preset highlighted in accent so it's
+    /// obvious what you're on without having to read the small live number.
     private var zoomControls: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+        HStack(spacing: 8) {
             Text(String(format: "%.1f×", camera.zoomFactor))
-                .plType(PLTypeStyle(.bold, 11, trackingEm: 0.04))
-                .foregroundStyle(PLColor.ink)
+                .plType(PLTypeStyle(.heavy, 13, trackingEm: 0.02))
+                .foregroundStyle(.white)
+                .frame(minWidth: 48)
+                .padding(.vertical, 12)
+
             HStack(spacing: 2) {
                 ForEach(zoomPresets, id: \.self) { level in
+                    let isActive = abs(camera.zoomFactor - level) < 0.15
                     Button {
                         camera.setZoom(level)
                         zoomGestureBaseline = level
                     } label: {
                         Text("\(Int(level))×")
-                            .plType(PLTypeStyle(.bold, 12))
-                            .foregroundStyle(PLColor.ink)
-                            .frame(width: 34, height: 34)
-                            .background(PLColor.surface.opacity(0.85))
+                            .plType(PLTypeStyle(isActive ? .heavy : .semibold, 14))
+                            .foregroundStyle(isActive ? .white : PLColor.ink)
+                            .frame(width: 44, height: 44)
+                            .background(isActive ? PLColor.accent : Color.clear)
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
+        .padding(.horizontal, 10)
+        .background(PLColor.groundNight.opacity(0.7))
     }
 
     private var zoomPresets: [CGFloat] {
-        // Capped at 6 so the row doesn't overcrowd/clip next to the caption
-        // text sharing the same corner.
+        // Capped at 6 so the row doesn't overflow off the trailing edge.
         [1, 2, 5, 10, 20, 30].filter { $0 <= camera.maxZoomFactor }
     }
 

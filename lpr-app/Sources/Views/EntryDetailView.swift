@@ -16,6 +16,7 @@ struct EntryDetailView: View {
     @State private var shareFile: ShareableFile?
     @State private var showDeleteConfirmation = false
     @State private var showZoomedPhoto = false
+    @State private var showPlateEditor = false
     @StateObject private var photoZoomState = PhotoZoomState()
     /// Decoded once per entry rather than inline in `photo`/the zoom cover
     /// -- `UIImage(data:)` produces a new object identity every call, and
@@ -67,6 +68,21 @@ struct EntryDetailView: View {
                 PhotoZoomView(image: photoImage, zoomState: photoZoomState, onDone: { showZoomedPhoto = false })
             }
         }
+        .fullScreenCover(isPresented: $showPlateEditor) {
+            ManualEntryView(
+                initialText: entry.plateNumber,
+                title: "EDIT PLATE",
+                primaryLabel: "SAVE",
+                primarySubLabel: nil,
+                image: photoImage,
+                photoZoomState: photoZoomState,
+                onLog: { text in
+                    entry.plateNumber = text
+                    showPlateEditor = false
+                },
+                onCancel: { showPlateEditor = false }
+            )
+        }
         .task(id: entry.id) {
             photoImage = entry.photoData.flatMap(UIImage.init(data:))
             photoZoomState.reset()
@@ -117,7 +133,18 @@ struct EntryDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(entry.plateNumber).plType(.plateDetail).foregroundStyle(PLColor.ink)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(entry.plateNumber).plType(.plateDetail).foregroundStyle(PLColor.ink)
+                Button {
+                    showPlateEditor = true
+                } label: {
+                    Text("EDIT")
+                        .underline()
+                        .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                        .foregroundStyle(PLColor.accentOnDark)
+                }
+                .buttonStyle(.plain)
+            }
             Text("\(displayState) · \(entry.capturedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.tag.uppercased())")
                 .plType(PLTypeStyle(.semibold, 12, trackingEm: 0.08))
                 .foregroundStyle(PLColor.inkTertiary)
