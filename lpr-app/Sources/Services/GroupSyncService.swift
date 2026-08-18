@@ -5,6 +5,17 @@ import FirebaseStorage
 import Foundation
 import SwiftData
 import UIKit
+import UserNotifications
+
+/// One row of a group's roster -- who's joined, and when. Written once
+/// per device per group (keyed by that device's anonymous auth UID) and
+/// refreshed on every `start()`, so a changed display name eventually
+/// catches up without needing its own dedicated sync path.
+struct GroupMember: Identifiable {
+    let id: String
+    let displayName: String
+    let joinedAt: Date
+}
 
 /// Mirrors this device's entries into a shared Firestore collection keyed
 /// by a plain "group code" (see Setup's GROUP section -- there are no
@@ -41,14 +52,19 @@ final class GroupSyncService: ObservableObject {
     /// listening to a group. Safe to call on every app launch with
     /// whatever group code is currently saved -- a no-op if empty or if
     /// Firebase isn't configured.
-    func start(groupCode: String, context: ModelContext) {
+    func start(groupCode: String, displayName: String, context: ModelContext) {
         modelContext = context
         guard isFirebaseConfigured, !groupCode.isEmpty else { return }
-        if currentGroupCode == groupCode, isActive { return }
+        UNUserNotificationCenter.current().delegate = self
+        if currentGroupCode == groupCode, isActive {
+            recordMembership(groupCode: groupCode, displayName: displayName)
+            return
+        }
         stop()
         currentGroupCode = groupCode
 
         if Auth.auth().currentUser != nil {
+            recordMembership(groupCode: groupCode, displayName: displayName)
             attachListener(groupCode: groupCode)
         } else {
             Auth.auth().signInAnonymously { [weak self] _, error in
@@ -57,9 +73,41 @@ final class GroupSyncService: ObservableObject {
                     self.lastError = error.localizedDescription
                     return
                 }
+                self.recordMembership(groupCode: groupCode, displayName: displayName)
                 self.attachListener(groupCode: groupCode)
             }
         }
+    }
+
+    private func recordMembership(groupCode: String, displayName: String) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        Firestore.firestore()
+            .collection("groups").document(groupCode).collection("members").document(uid)
+            .setData(["displayName": displayName, "joinedAt": FieldValue.serverTimestamp()], merge: true)
+    }
+
+    /// One-shot fetch for Setup's "View Roster" screen -- doesn't need
+    /// its own live listener the way entries do, since checking in on
+    /// who's in the group isn't something that needs to update while
+    /// you're looking at it.
+    func fetchMembers(groupCode: String, completion: @escaping ([GroupMember]) -> Void) {
+        guard isFirebaseConfigured, !groupCode.isEmpty else {
+            completion([])
+            return
+        }
+        Firestore.firestore()
+            .collection("groups").document(groupCode).collection("members")
+            .order(by: "joinedAt")
+            .getDocuments { snapshot, _ in
+                let members: [GroupMember] = snapshot?.documents.compactMap { document in
+                    guard
+                        let displayName = document.data()["displayName"] as? String,
+                        let joinedAt = document.data()["joinedAt"] as? Timestamp
+                    else { return nil }
+                    return GroupMember(id: document.documentID, displayName: displayName, joinedAt: joinedAt.dateValue())
+                } ?? []
+                completion(members)
+            }
     }
 
     func stop() {
@@ -204,6 +252,32 @@ final class GroupSyncService: ObservableObject {
         if let photoPath = data["photoPath"] as? String {
             downloadPhoto(path: photoPath, into: entry)
         }
+
+        // Only reached for a genuinely new document -- this device's own
+        // entries are already inserted locally (in saveEntry/quickLog,
+        // before push() is even called) by the time their own listener
+        // echo arrives, so they take the "already exists" branch above
+        // and never reach here. No self-notify guard needed.
+        if entry.tag == "BOLO" {
+            notifyBOLO(entry)
+        }
+    }
+
+    /// A local notification -- not a remote push, so it only fires while
+    /// this device's app process is actually alive (foreground, or
+    /// briefly after backgrounding). It won't wake the phone if SAL's
+    /// been force-quit or left untouched a long while; that would need a
+    /// server-triggered remote push instead. Silently does nothing if
+    /// notification permission was never granted.
+    private func notifyBOLO(_ entry: PlateEntry) {
+        let content = UNMutableNotificationContent()
+        content.title = "BOLO Logged"
+        content.body = entry.loggedByName.isEmpty
+            ? "\(entry.plateNumber) was just logged by a group member."
+            : "\(entry.plateNumber) was just logged by \(entry.loggedByName)."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: entry.id.uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     /// Applies whatever's in Firestore onto an entry that already exists
@@ -250,5 +324,19 @@ final class GroupSyncService: ObservableObject {
             "loggedByName": entry.loggedByName,
             "updatedAt": FieldValue.serverTimestamp()
         ]
+    }
+}
+
+extension GroupSyncService: UNUserNotificationCenterDelegate {
+    /// Without this, iOS silently swallows a local notification whenever
+    /// the app is already in the foreground -- which, for this feature,
+    /// is the single most common moment someone's actually looking at
+    /// their phone to see it.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 }

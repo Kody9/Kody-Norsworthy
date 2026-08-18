@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 import UIKit
+import UserNotifications
 
 /// "Setup" tab. Not pixel-specced in the redesign handoff (no Setup screen
 /// exists in the design canvas yet) — kept functional and restyled just
@@ -21,6 +22,9 @@ struct SettingsView: View {
     @State private var showLeaveConfirmation = false
     @State private var groupCodeDraft = ""
     @State private var displayNameDraft = ""
+    @State private var showRoster = false
+    @State private var rosterMembers: [GroupMember] = []
+    @State private var isLoadingRoster = false
 
     private let retentionOptions = [7, 14, 30, 60, 90, 0]
 
@@ -136,6 +140,9 @@ struct SettingsView: View {
             groupCodeDraft = groupCode
             displayNameDraft = displayName
         }
+        .sheet(isPresented: $showRoster) {
+            GroupRosterView(members: rosterMembers, isLoading: isLoadingRoster, onDone: { showRoster = false })
+        }
     }
 
     private var canJoin: Bool {
@@ -206,15 +213,24 @@ struct SettingsView: View {
                     .plType(PLTypeStyle(.medium, 11))
                     .foregroundStyle(PLColor.accentOnDark)
             }
-            Button {
-                showLeaveConfirmation = true
-            } label: {
-                Text("LEAVE GROUP")
-                    .underline()
-                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
-                    .foregroundStyle(PLColor.accentOnDark)
+            HStack(spacing: 20) {
+                Button(action: openRoster) {
+                    Text("VIEW ROSTER")
+                        .underline()
+                        .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                        .foregroundStyle(PLColor.ink)
+                }
+                .buttonStyle(.plain)
+                Button {
+                    showLeaveConfirmation = true
+                } label: {
+                    Text("LEAVE GROUP")
+                        .underline()
+                        .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                        .foregroundStyle(PLColor.accentOnDark)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, PLSpacing.gutter)
         .padding(.bottom, PLSpacing.gutter)
@@ -237,12 +253,26 @@ struct SettingsView: View {
         guard canJoin else { return }
         displayName = displayNameDraft.trimmingCharacters(in: .whitespaces)
         groupCode = groupCodeDraft.trimmingCharacters(in: .whitespaces)
-        syncService.start(groupCode: groupCode, context: modelContext)
+        syncService.start(groupCode: groupCode, displayName: displayName, context: modelContext)
+        // Local notifications for BOLO matches -- see GroupSyncService.
+        // Requested here (not at app launch) so the prompt shows up
+        // right when it's actually relevant, tied to the action that
+        // makes it useful.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
     private func leaveGroup() {
         syncService.stop()
         groupCode = ""
+    }
+
+    private func openRoster() {
+        showRoster = true
+        isLoadingRoster = true
+        syncService.fetchMembers(groupCode: groupCode) { members in
+            rosterMembers = members
+            isLoadingRoster = false
+        }
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -321,4 +351,70 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+/// Everyone who's ever joined this group -- see
+/// GroupSyncService.fetchMembers. A one-shot fetch on open rather than a
+/// live listener, since who's in the group isn't something that needs
+/// to update while you're actively looking at the list.
+private struct GroupRosterView: View {
+    let members: [GroupMember]
+    let isLoading: Bool
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("GROUP ROSTER")
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.06))
+                    .foregroundStyle(PLColor.accentOnDark)
+                Spacer()
+                Button("DONE", action: onDone)
+                    .buttonStyle(.plain)
+                    .plType(PLTypeStyle(.bold, 12, trackingEm: 0.08))
+                    .foregroundStyle(PLColor.ink)
+            }
+            .padding(.horizontal, PLSpacing.gutter)
+            .padding(.vertical, 14)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(PLColor.ink).frame(height: PLSpacing.ruleWidth)
+            }
+
+            if isLoading {
+                Spacer()
+                Text("LOADING…").plType(.body).foregroundStyle(PLColor.inkTertiary)
+                Spacer()
+            } else if members.isEmpty {
+                Spacer()
+                Text("No members found yet.").plType(.body).foregroundStyle(PLColor.inkTertiary)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(members) { member in
+                            memberRow(member)
+                        }
+                    }
+                }
+            }
+        }
+        .background(PLColor.ground)
+    }
+
+    private func memberRow(_ member: GroupMember) -> some View {
+        HStack {
+            Text(member.displayName.isEmpty ? "Unnamed" : member.displayName)
+                .plType(PLTypeStyle(.semibold, 15))
+                .foregroundStyle(PLColor.ink)
+            Spacer()
+            Text("JOINED \(member.joinedAt.formatted(date: .abbreviated, time: .omitted).uppercased())")
+                .plType(PLTypeStyle(.bold, 10, trackingEm: 0.06))
+                .foregroundStyle(PLColor.inkTertiary)
+        }
+        .padding(.horizontal, PLSpacing.gutter)
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(PLColor.ruleWeak).frame(height: PLSpacing.ruleWidth)
+        }
+    }
 }

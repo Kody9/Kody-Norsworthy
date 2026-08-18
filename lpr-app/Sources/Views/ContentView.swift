@@ -7,6 +7,7 @@ struct ContentView: View {
     @AppStorage("retentionDays") private var retentionDays = 30
     @AppStorage("appLockEnabled") private var appLockEnabled = false
     @AppStorage("groupCode") private var groupCode = ""
+    @AppStorage("displayName") private var displayName = ""
     @StateObject private var lockService = AppLockService()
     @StateObject private var syncService = GroupSyncService()
     @State private var selectedTab: PLTab = .capture
@@ -31,7 +32,7 @@ struct ContentView: View {
             // Resumes an already-joined group on every launch -- joining
             // itself happens from Setup's GROUP section.
             if !groupCode.isEmpty {
-                syncService.start(groupCode: groupCode, context: modelContext)
+                syncService.start(groupCode: groupCode, displayName: displayName, context: modelContext)
             }
         }
         .onChange(of: scenePhase) { _, newPhase in

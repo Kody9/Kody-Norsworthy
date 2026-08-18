@@ -24,9 +24,16 @@ device — optional group sync (see below) is the one exception.
   existing duplicate/BOLO-match banners on the Read screen catch a plate a
   groupmate already logged — with a photo to actually confirm it's the same
   car, not just a plate-text match. The synced photo is a downscaled copy;
-  your own device's copy stays full-resolution. Requires a Firebase project
-  you set up yourself — see "Group sync setup" below. The app works
-  completely normally, fully local, without ever doing this.
+  your own device's copy stays full-resolution. When someone logs a plate
+  tagged BOLO, everyone else in the group with notifications enabled gets
+  a local notification — fired by the app itself the moment its own
+  listener sees it, so it only works while the app is running (foreground,
+  or briefly after backgrounding); it won't wake the phone if SAL's been
+  force-quit or untouched a long while, which would need a real
+  server-triggered push instead. Setup → GROUP → View Roster shows
+  everyone who's ever joined and when. Requires a Firebase project you set
+  up yourself — see "Group sync setup" below. The app works completely
+  normally, fully local, without ever doing this.
 - **No plate-to-owner lookup, ever.** DMV registration records are protected
   by the federal Driver's Privacy Protection Act (and most state equivalents).
   There is no legitimate public API that maps a plate to an owner's identity,
@@ -149,13 +156,20 @@ read or write your group's data.
        match /groups/{groupCode}/entries/{entryId} {
          allow read, write: if request.auth != null;
        }
+       match /groups/{groupCode}/members/{memberId} {
+         allow read, write: if request.auth != null;
+       }
      }
    }
    ```
    This means: anyone who has the app installed and knows a group's code
-   can read and write that group's entries, and nothing else. There's no
-   per-person access control beyond the code itself — same trust model as
-   a shared Wi-Fi password. Pick group codes accordingly (not `"1234"`).
+   can read and write that group's entries and roster, and nothing else.
+   There's no per-person access control beyond the code itself — same
+   trust model as a shared Wi-Fi password. Pick group codes accordingly
+   (not `"1234"`). (If you set up group sync before the roster feature
+   existed, you'll need to add the `members` block above to your existing
+   published rules — without it, View Roster and joining will fail with a
+   permission error.)
 7. **Enable Storage and set its security rules too — optional, requires
    billing.** Photos sync through Firebase Storage, not Firestore, and as
    of Google's current policy, creating a Storage bucket at all requires
@@ -215,3 +229,13 @@ from the group or anyone else's copy (no delete-sync in this first pass).
   other could have one edit clobber the other. For a personal group this
   is a rare enough edge case not to have engineered around yet.
 - Deletes don't sync (see above) — this is deliberate for now, not a bug.
+- BOLO notifications are local, not a real remote push — they only fire
+  while the app is actually running (foreground or briefly backgrounded).
+  Force-quit or long-untouched, and nothing fires until it's reopened.
+  Going further would mean a Cloud Function (needs the same Blaze plan as
+  Storage) plus Apple Developer push certificate setup — a real backend
+  component this personal-scale project doesn't have.
+- The roster shows every device that's ever joined a group, including
+  ones that later left — there's no "remove a member" action, matching
+  the same shared-code trust model as the rest of group sync (rotating
+  the code is the only way to revoke access, and it revokes everyone's).
