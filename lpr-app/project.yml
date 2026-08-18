@@ -20,6 +20,8 @@ targets:
         product: FirebaseFirestore
       - package: Firebase
         product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseStorage
     info:
       path: Info.plist
       properties:

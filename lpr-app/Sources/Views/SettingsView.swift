@@ -164,7 +164,7 @@ struct SettingsView: View {
 
     private var groupJoinForm: some View {
         VStack(alignment: .leading, spacing: PLSpacing.md) {
-            Text("Share captures with a group of people who also have SAL — everyone sees each other's plates, notes, and tags (not photos), and gets flagged if someone else already logged the same plate.")
+            Text("Share captures with a group of people who also have SAL — everyone sees each other's plates, photos, notes, and tags, and gets flagged if someone else already logged the same plate.")
                 .plType(.body)
                 .foregroundStyle(PLColor.inkTertiary)
 

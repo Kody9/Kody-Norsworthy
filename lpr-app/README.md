@@ -3,8 +3,7 @@
 A personal license-plate quick-capture app for iPhone: point the camera at a
 plate, on-device OCR reads it, you confirm it, and it's saved locally with a
 timestamp, GPS location, and a photo. By default nothing ever leaves the
-device — optional group sync (see below) is the one exception, and only
-syncs the text fields, never photos.
+device — optional group sync (see below) is the one exception.
 
 ## What this app does — and deliberately does not do
 
@@ -20,12 +19,14 @@ syncs the text fields, never photos.
   group of people (e.g. family/friends who also run this app) share a
   single log. Everyone types the same group code and a display name — no
   accounts, no login screen. Once joined, entries anyone in the group logs
-  (plate, state, tag, notes, driver name, time, location — never photos)
-  sync to everyone else's phone and merge into their local History, so the
+  (plate, state, tag, notes, driver name, time, location, and photo) sync
+  to everyone else's phone and merge into their local History, so the
   existing duplicate/BOLO-match banners on the Read screen catch a plate a
-  groupmate already logged, not just ones you logged yourself. Requires a
-  Firebase project you set up yourself — see "Group sync setup" below. The
-  app works completely normally, fully local, without ever doing this.
+  groupmate already logged — with a photo to actually confirm it's the same
+  car, not just a plate-text match. The synced photo is a downscaled copy;
+  your own device's copy stays full-resolution. Requires a Firebase project
+  you set up yourself — see "Group sync setup" below. The app works
+  completely normally, fully local, without ever doing this.
 - **No plate-to-owner lookup, ever.** DMV registration records are protected
   by the federal Driver's Privacy Protection Act (and most state equivalents).
   There is no legitimate public API that maps a plate to an owner's identity,
@@ -155,14 +156,31 @@ read or write your group's data.
    can read and write that group's entries, and nothing else. There's no
    per-person access control beyond the code itself — same trust model as
    a shared Wi-Fi password. Pick group codes accordingly (not `"1234"`).
-7. **Rebuild and run.** Setup → GROUP will go from "add
+7. **Enable Storage and set its security rules too.** Photos sync through
+   Firebase Storage, not Firestore. Build → Storage → Get started, then
+   Rules tab → paste:
+   ```
+   rules_version = '2';
+   service firebase.storage {
+     match /b/{bucket}/o {
+       match /groups/{groupCode}/photos/{fileName} {
+         allow read, write: if request.auth != null;
+       }
+     }
+   }
+   ```
+   Same trust model as the Firestore rules above — anyone with the group
+   code can read and write that group's photos.
+8. **Rebuild and run.** Setup → GROUP will go from "add
    GoogleService-Info.plist" to a real join form once the app finds that
    file in its bundle.
 
-Photos never sync, in either direction — only plate, state, VIN, driver
-name, notes, tag, timestamp, and location. Deleting an entry only deletes
-it on your own device; it isn't removed from the group or from anyone
-else's copy (no delete-sync in this first pass).
+Photos sync as a downscaled copy (~900px, moderate JPEG quality) —
+your own device keeps the full-resolution original; only what leaves the
+device gets shrunk, to keep Storage's free-tier bandwidth (1GB/day on the
+Spark plan) from disappearing into a handful of full-res photos. Deleting
+an entry only deletes it on your own device; it isn't removed from the
+group or from anyone else's copy (no delete-sync in this first pass).
 
 ## Known limitations
 
