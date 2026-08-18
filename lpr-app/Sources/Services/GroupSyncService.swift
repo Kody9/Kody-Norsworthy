@@ -98,10 +98,13 @@ final class GroupSyncService: ObservableObject {
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
         Storage.storage().reference(withPath: path).putData(resized, metadata: metadata) { [weak self] _, error in
-            if let error {
-                self?.lastError = error.localizedDescription
-                return
-            }
+            // Deliberately doesn't touch `lastError` on failure -- photo
+            // sync is optional (it needs Storage enabled on a paid
+            // Blaze plan, which not everyone running a group wants to
+            // turn on) and its absence shouldn't read as a broken group
+            // connection. Text sync via Firestore is entirely
+            // independent of this and keeps working either way.
+            guard error == nil else { return }
             // Only recorded in Firestore once the upload actually
             // succeeds, so a groupmate's listener never sees a
             // photoPath pointing at nothing.
@@ -195,13 +198,11 @@ final class GroupSyncService: ObservableObject {
     }
 
     private func downloadPhoto(path: String, into entry: PlateEntry) {
-        Storage.storage().reference(withPath: path).getData(maxSize: 10 * 1024 * 1024) { [weak self] data, error in
-            guard let data else {
-                if let error {
-                    self?.lastError = error.localizedDescription
-                }
-                return
-            }
+        // Same reasoning as uploadPhotoIfNeeded: a missing/unreachable
+        // photo shouldn't surface as a group-connection error. Worst
+        // case here, the entry just keeps its placeholder thumbnail.
+        Storage.storage().reference(withPath: path).getData(maxSize: 10 * 1024 * 1024) { data, _ in
+            guard let data else { return }
             entry.photoData = data
         }
     }

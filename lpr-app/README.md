@@ -156,9 +156,23 @@ read or write your group's data.
    can read and write that group's entries, and nothing else. There's no
    per-person access control beyond the code itself — same trust model as
    a shared Wi-Fi password. Pick group codes accordingly (not `"1234"`).
-7. **Enable Storage and set its security rules too.** Photos sync through
-   Firebase Storage, not Firestore. Build → Storage → Get started, then
-   Rules tab → paste:
+7. **Enable Storage and set its security rules too — optional, requires
+   billing.** Photos sync through Firebase Storage, not Firestore, and as
+   of Google's current policy, creating a Storage bucket at all requires
+   upgrading the project to the **Blaze** (pay-as-you-go) plan — a
+   payment method on file, even though actual usage for a personal group
+   is very unlikely to ever be charged (Blaze's no-cost usage tier covers
+   the same 5GB storage / 1GB per day download that used to be free
+   outright). If you'd rather not put a card on a project for this,
+   **skip this step entirely** — text sync (steps 1–6) works completely
+   independently on the free Spark plan, plates/notes/tags keep syncing,
+   and photos just silently stay local-only, exactly like the app
+   behaved before this feature existed. Nothing else breaks.
+
+   If you do proceed: Build → Storage → Get started → **Upgrade
+   project** (this is where billing gets attached) → set a **budget
+   alert** in Google Cloud Console (Billing → Budgets & alerts) for a
+   dollar or two as a backstop → then Storage's Rules tab → paste:
    ```
    rules_version = '2';
    service firebase.storage {
@@ -175,12 +189,15 @@ read or write your group's data.
    GoogleService-Info.plist" to a real join form once the app finds that
    file in its bundle.
 
-Photos sync as a downscaled copy (~900px, moderate JPEG quality) —
-your own device keeps the full-resolution original; only what leaves the
-device gets shrunk, to keep Storage's free-tier bandwidth (1GB/day on the
-Spark plan) from disappearing into a handful of full-res photos. Deleting
-an entry only deletes it on your own device; it isn't removed from the
-group or from anyone else's copy (no delete-sync in this first pass).
+If you did step 7: photos sync as a downscaled copy (~900px, moderate
+JPEG quality) — your own device keeps the full-resolution original; only
+what leaves the device gets shrunk. If you skipped it: everything above
+still works, photo uploads just fail quietly in the background (by
+design — a missing Storage bucket doesn't get treated as a broken group
+connection, so Setup → GROUP won't show an alarming error over it).
+Deleting an entry only deletes it on your own device either way; it
+isn't removed from the group or from anyone else's copy (no delete-sync
+in this first pass).
 
 ## Known limitations
 
