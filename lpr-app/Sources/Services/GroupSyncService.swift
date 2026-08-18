@@ -69,9 +69,12 @@ final class GroupSyncService: ObservableObject {
         currentGroupCode = nil
     }
 
-    /// Pushes a freshly-created local entry up to the group. Call this
-    /// right after every local insert while a group is joined -- see
-    /// CaptureView's `saveEntry`/`quickLog`. The text fields write
+    /// Pushes a local entry up to the group -- both a freshly-created one
+    /// (CaptureView's `saveEntry`/`quickLog`) and a later edit to one
+    /// that's already synced (EntryDetailView, for e.g. adding a note
+    /// after the fact -- exactly the case someone else's BOLO/duplicate
+    /// match needs to actually be useful). `setData(merge:)` on the same
+    /// document ID handles both the same way. The text fields write
     /// immediately; a photo (if there is one) uploads separately and
     /// doesn't hold up the rest of the sync while it does.
     func push(_ entry: PlateEntry, groupCode: String) {
@@ -154,13 +157,19 @@ final class GroupSyncService: ObservableObject {
         let descriptor = FetchDescriptor<PlateEntry>(predicate: #Predicate { $0.id == id })
 
         if let existing = (try? modelContext.fetch(descriptor))?.first {
-            // Already have this one -- the only thing a later change
-            // can mean is a photo that finished uploading after the
-            // text. `photoData == nil` also protects the device that
-            // originally captured this entry: its own listener sees
-            // its own writes too, but it already has the full-res
-            // local photo and shouldn't have that overwritten by the
-            // downscaled synced copy.
+            // Already have this one locally -- a later change means
+            // either an edit made on some device (a note added after
+            // the fact is exactly what a groupmate's duplicate/BOLO
+            // match needs to actually be useful) or a photo that
+            // finished uploading after the text. Applying the same
+            // values back onto the device that made the edit is a
+            // harmless no-op, since they already match.
+            applyTextFields(data, to: existing)
+            // `photoData == nil` protects the device that originally
+            // captured this entry: its own listener sees its own writes
+            // too, but it already has the full-res local photo and
+            // shouldn't have that overwritten by the downscaled synced
+            // copy.
             if existing.photoData == nil, let photoPath = data["photoPath"] as? String {
                 downloadPhoto(path: photoPath, into: existing)
             }
@@ -197,6 +206,21 @@ final class GroupSyncService: ObservableObject {
         }
     }
 
+    /// Applies whatever's in Firestore onto an entry that already exists
+    /// locally -- the fields a person can actually edit later (plate,
+    /// state, VIN, notes, driver name). Firestore is treated as the
+    /// source of truth here: whichever device's edit reached the server
+    /// last is what everyone ends up seeing, including the device that
+    /// made the edit itself (where this is a no-op, since its local
+    /// values already match what it just pushed).
+    private func applyTextFields(_ data: [String: Any], to entry: PlateEntry) {
+        if let plateNumber = data["plateNumber"] as? String { entry.plateNumber = plateNumber }
+        if let state = data["state"] as? String { entry.state = state }
+        entry.vin = data["vin"] as? String
+        entry.notes = data["notes"] as? String ?? entry.notes
+        entry.driverName = data["driverName"] as? String ?? entry.driverName
+    }
+
     private func downloadPhoto(path: String, into entry: PlateEntry) {
         // Same reasoning as uploadPhotoIfNeeded: a missing/unreachable
         // photo shouldn't surface as a group-connection error. Worst
@@ -207,20 +231,24 @@ final class GroupSyncService: ObservableObject {
         }
     }
 
+    /// `FieldValue.delete()` rather than omitting a nil field entirely --
+    /// omitting it would leave a stale value sitting in Firestore forever
+    /// if an edit clears something that was previously set (e.g. wiping
+    /// out a VIN). Deleting a field that was never set to begin with is a
+    /// harmless no-op, so this is safe for a brand-new entry too.
     private static func payload(for entry: PlateEntry) -> [String: Any] {
-        var payload: [String: Any] = [
+        [
             "plateNumber": entry.plateNumber,
             "state": entry.state,
+            "vin": entry.vin ?? FieldValue.delete(),
             "capturedAt": Timestamp(date: entry.capturedAt),
+            "latitude": entry.latitude ?? FieldValue.delete(),
+            "longitude": entry.longitude ?? FieldValue.delete(),
             "notes": entry.notes,
             "tag": entry.tag,
             "driverName": entry.driverName,
             "loggedByName": entry.loggedByName,
             "updatedAt": FieldValue.serverTimestamp()
         ]
-        if let vin = entry.vin { payload["vin"] = vin }
-        if let latitude = entry.latitude { payload["latitude"] = latitude }
-        if let longitude = entry.longitude { payload["longitude"] = longitude }
-        return payload
     }
 }

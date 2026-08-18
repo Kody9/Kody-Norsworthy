@@ -12,12 +12,19 @@ struct EntryDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PlateEntry.capturedAt, order: .reverse) private var allEntries: [PlateEntry]
+    @EnvironmentObject private var syncService: GroupSyncService
+    @AppStorage("groupCode") private var groupCode = ""
 
     @State private var shareFile: ShareableFile?
     @State private var showDeleteConfirmation = false
     @State private var showZoomedPhoto = false
     @State private var showPlateEditor = false
     @StateObject private var photoZoomState = PhotoZoomState()
+    /// Debounces edits to STATE/VIN/DRIVER/NOTES (each keystroke mutates
+    /// the model directly via a live TextField binding) into a single
+    /// push once typing pauses, rather than writing to Firestore on
+    /// every character.
+    @State private var pendingSyncTask: Task<Void, Never>?
     /// Decoded once per entry rather than inline in `photo`/the zoom cover
     /// -- `UIImage(data:)` produces a new object identity every call, and
     /// `ZoomingScrollView` tracks the current image by reference. Since the
@@ -85,6 +92,7 @@ struct EntryDetailView: View {
                 onLog: { text in
                     entry.plateNumber = text
                     showPlateEditor = false
+                    syncService.push(entry, groupCode: groupCode)
                 },
                 onCancel: { showPlateEditor = false }
             )
@@ -92,6 +100,25 @@ struct EntryDetailView: View {
         .task(id: entry.id) {
             photoImage = entry.photoData.flatMap(UIImage.init(data:))
             photoZoomState.reset()
+        }
+        .onChange(of: entry.state) { _, _ in scheduleSync() }
+        .onChange(of: entry.vin) { _, _ in scheduleSync() }
+        .onChange(of: entry.driverName) { _, _ in scheduleSync() }
+        .onChange(of: entry.notes) { _, _ in scheduleSync() }
+    }
+
+    /// A note (or state/VIN/driver correction) added after the fact is
+    /// exactly what makes a groupmate's later BOLO/duplicate match on
+    /// this plate useful -- so an edit here needs to reach the group,
+    /// not just stay local. Debounced so a burst of keystrokes becomes
+    /// one push, not one per character.
+    private func scheduleSync() {
+        guard !groupCode.isEmpty else { return }
+        pendingSyncTask?.cancel()
+        pendingSyncTask = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            syncService.push(entry, groupCode: groupCode)
         }
     }
 

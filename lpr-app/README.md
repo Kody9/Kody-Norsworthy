@@ -195,9 +195,12 @@ what leaves the device gets shrunk. If you skipped it: everything above
 still works, photo uploads just fail quietly in the background (by
 design — a missing Storage bucket doesn't get treated as a broken group
 connection, so Setup → GROUP won't show an alarming error over it).
-Deleting an entry only deletes it on your own device either way; it
-isn't removed from the group or from anyone else's copy (no delete-sync
-in this first pass).
+Editing a synced entry — correcting the plate, adding a note, changing
+state/VIN/driver name — pushes that edit back to the group the same way a
+new capture does, so a note added after the fact reaches everyone,
+including anyone who already has that entry in their own History. Delete
+is the one exception: it only removes an entry on your own device, not
+from the group or anyone else's copy (no delete-sync in this first pass).
 
 ## Known limitations
 
@@ -207,7 +210,8 @@ in this first pass).
   the suggested text before saving; that's why the confirm screen exists.
 - VIN capture is manual entry only (no VIN-plate OCR, and no VIN decode
   lookup) — it's just a note field.
-- Group sync is one-way-append only: new entries push and pull, but an
-  edit (e.g. correcting a plate after the fact) or a delete only applies
-  on the device that made it, not across the group. Editing a plate on a
-  synced entry is local-only until this is addressed.
+- Group sync has no real conflict resolution — last write wins, per
+  field. Two people editing the same entry within about a second of each
+  other could have one edit clobber the other. For a personal group this
+  is a rare enough edge case not to have engineered around yet.
+- Deletes don't sync (see above) — this is deliberate for now, not a bug.
